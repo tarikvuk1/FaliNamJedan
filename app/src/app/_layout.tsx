@@ -1,21 +1,17 @@
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { AuthProvider, useAuth } from '../lib/auth';
 
 export default function RootLayout() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  return (
+    <AuthProvider>
+      <RootStack />
+    </AuthProvider>
+  );
+}
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
+function RootStack() {
+  const { session, onboarded, loading } = useAuth();
 
   if (loading) {
     return (
@@ -27,14 +23,24 @@ export default function RootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Prijavljeni korisnici */}
-      <Stack.Protected guard={!!session}>
-        <Stack.Screen name="index" />
-      </Stack.Protected>
-
-      {/* Neprijavljeni korisnici */}
       <Stack.Protected guard={!session}>
         <Stack.Screen name="login" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && !onboarded}>
+        <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!!session && onboarded}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="create"
+          options={{ headerShown: true, title: 'Novi oglas', headerBackTitle: 'Nazad' }}
+        />
+        <Stack.Screen
+          name="game/[id]"
+          options={{ headerShown: true, title: 'Termin', headerBackTitle: 'Nazad' }}
+        />
       </Stack.Protected>
     </Stack>
   );

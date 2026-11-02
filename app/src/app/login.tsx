@@ -15,8 +15,8 @@ export default function Login() {
   async function submit() {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.includes('@')) return setError('Unesi ispravan email.');
-    if (password.length < 6) return setError('Lozinka mora imati bar 6 znakova.');
-
+    if (!password) return setError('Unesi lozinku.');
+    if (mode === 'register' && password.length < 6) return setError('Lozinka mora imati bar 6 znakova.');
     setLoading(true);
     setError('');
 
