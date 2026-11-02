@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { GREEN } from '../../lib/ui';
 import { CityField } from '../../components/CityPicker';
+import { unregisterPush } from '../../lib/push';
 
 export default function Profile() {
   const { session } = useAuth();
@@ -100,7 +101,7 @@ export default function Profile() {
           </Pressable>
 
           <Pressable
-            onPress={() => supabase.auth.signOut()}
+            onPress={async () => { await unregisterPush(); await supabase.auth.signOut(); }}
             style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12 }}
           >
             <Text style={{ color: '#d00', fontWeight: '700' }}>Odjavi se</Text>
