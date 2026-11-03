@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth';
 import { GREEN } from '../../lib/ui';
 import { CityField } from '../../components/CityPicker';
 import { unregisterPush } from '../../lib/push';
+import { BlockedUsersModal } from '../../components/ReportModal';
 
 export default function Profile() {
   const { session } = useAuth();
@@ -22,6 +23,7 @@ export default function Profile() {
   const [noShow, setNoShow] = useState(0);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
   const [message, setMessage] = useState('');
 
   useFocusEffect(useCallback(() => {
@@ -143,6 +145,14 @@ export default function Profile() {
           >
             <Text style={{ color: '#d00', fontWeight: '700' }}>Odjavi se</Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => setBlockedOpen(true)}
+            style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12 }}
+          >
+            <Text style={{ color: '#333', fontWeight: '600' }}>Blokirani korisnici</Text>
+          </Pressable>
+          <BlockedUsersModal visible={blockedOpen} onClose={() => setBlockedOpen(false)} />
 
           {/* Opasna zona */}
           <Pressable onPress={confirmDelete} disabled={deleting} style={{ alignItems: 'center', marginTop: 32, padding: 8 }}>

@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
 import { GREEN } from '../../lib/ui';
+import { ReportModal, ReportTarget } from '../../components/ReportModal';
 
 type GameDetails = {
   id: string;
@@ -52,6 +53,7 @@ export default function GameScreen() {
   const [playerContacts, setPlayerContacts] = useState<Record<string, Contacts>>({});
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState('');
@@ -263,6 +265,7 @@ export default function GameScreen() {
                         <Text style={{ color: '#d00', fontWeight: '700' }}>Odbij</Text>
                       </Pressable>
                     </View>
+                    <ReportLink onPress={() => r.player && setReportTarget({ id: r.player.id, name: fullName(r.player) })} />
                   </Card>
                 ))}
               </Section>
@@ -286,6 +289,7 @@ export default function GameScreen() {
                         <AttendanceButton label="✕ Nije došao" active={marked === false} color="#d00" onPress={() => markAttendance(pid, false)} disabled={acting} />
                       </View>
                     )}
+                    <ReportLink onPress={() => r.player && setReportTarget({ id: r.player.id, name: fullName(r.player) })} />
                   </Card>
                 );
               })}
@@ -335,6 +339,10 @@ export default function GameScreen() {
           <Section title="Organizator">
             <Text style={value}>{fullName(game.organizer)}</Text>
             <Text style={sub}>{reliability(game.organizer?.games_attended ?? 0, game.organizer?.games_no_show ?? 0)}</Text>
+            <ReportLink
+              label="Prijavi ili blokiraj organizatora"
+              onPress={() => setReportTarget({ id: game.organizer_id, name: fullName(game.organizer) })}
+            />
           </Section>
         )}
 
@@ -383,7 +391,23 @@ export default function GameScreen() {
           />
         )}
       </View>
+
+      <ReportModal
+        target={reportTarget}
+        gameId={id}
+        onClose={() => setReportTarget(null)}
+        // Organizator blokira igrača: osvježi listu. Igrač blokira organizatora: oglas mu više nije vidljiv.
+        onBlocked={() => (isOrganizer ? load() : router.back())}
+      />
     </View>
+  );
+}
+
+function ReportLink({ onPress, label = 'Prijavi / blokiraj' }: { onPress: () => void; label?: string }) {
+  return (
+    <Pressable onPress={onPress} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+      <Text style={{ color: '#999', fontSize: 13, textDecorationLine: 'underline' }}>{label}</Text>
+    </Pressable>
   );
 }
 
