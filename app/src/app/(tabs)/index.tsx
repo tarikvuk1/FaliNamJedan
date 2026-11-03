@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/auth';
 import { useSports } from '../../lib/sports';
 import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
 import { Chip, GREEN } from '../../lib/ui';
@@ -22,12 +23,15 @@ type Game = {
 };
 
 export default function Home() {
+  const { session } = useAuth();
+  const uid = session!.user.id;
   const sports = useSports();
   const [sportId, setSportId] = useState<number | null>(null);
   const [city, setCity] = useState<string | null>('Sarajevo');
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [following, setFollowing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +46,28 @@ export default function Home() {
   }, [sportId, city]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Da li korisnik već prati izabrani sport + grad
+  useEffect(() => {
+    if (!sportId || !city) return setFollowing(false);
+    supabase.from('follows').select('sport_id').eq('user_id', uid).eq('sport_id', sportId).eq('city', city).maybeSingle()
+      .then(({ data }) => setFollowing(!!data));
+  }, [sportId, city, uid]);
+
+  async function toggleFollow() {
+    if (!sportId || !city) return;
+    if (following) {
+      const { error } = await supabase.from('follows').delete().eq('user_id', uid).eq('sport_id', sportId).eq('city', city);
+      if (error) return Alert.alert('Greška', error.message);
+      setFollowing(false);
+    } else {
+      const { error } = await supabase.from('follows').upsert({ user_id: uid, sport_id: sportId, city }, { ignoreDuplicates: true });
+      if (error) return Alert.alert('Greška', error.message);
+      setFollowing(true);
+      const s = sports.find((x) => x.id === sportId);
+      Alert.alert('🔔 Pratiš', `Javit ćemo ti kad se pojavi novi termin: ${s?.name ?? ''}, ${city}.`);
+    }
+  }
 
   const sportById = (id: number) => sports.find((s) => s.id === id);
 
@@ -62,6 +88,22 @@ export default function Home() {
             <Chip key={s.id} label={`${SPORT_EMOJI[s.slug] ?? ''} ${s.name}`} active={sportId === s.id} onPress={() => setSportId(s.id)} />
           ))}
         </ScrollView>
+
+        {/* Praćenje: vidljivo kad su izabrani i sport i grad */}
+        {sportId && city && (
+          <Pressable
+            onPress={toggleFollow}
+            style={{
+              flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 4,
+              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999,
+              borderWidth: 1, borderColor: following ? GREEN : '#ddd', backgroundColor: following ? '#ecfdf5' : '#fff',
+            }}
+          >
+            <Text style={{ color: following ? GREEN : '#444', fontWeight: '600' }}>
+              {following ? '🔔 Pratiš ovaj sport u ovom gradu' : '🔕 Javi mi za nove termine'}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {!!error && <Text style={{ color: '#d00', paddingHorizontal: 20 }}>{error}</Text>}
