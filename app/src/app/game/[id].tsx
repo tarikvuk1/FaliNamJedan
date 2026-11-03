@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
@@ -62,13 +62,13 @@ export default function GameScreen() {
         .from('games')
         .select('*, sport:sports(name, slug), organizer:profiles!games_organizer_id_fkey(first_name, last_name, games_attended, games_no_show)')
         .eq('id', id)
-        .single(),
+        .maybeSingle(),
       supabase.rpc('game_extra', { p_game_id: id }).maybeSingle(),
       supabase.from('join_requests').select('id, status').eq('game_id', id).eq('player_id', uid).maybeSingle(),
     ]);
 
     if (e1 || !g) {
-      setError(e1?.message ?? 'Termin nije pronađen.');
+      setError(e1?.message ?? 'Termin nije pronađen. Možda ga je organizator obrisao.');
       setLoading(false);
       return;
     }
@@ -175,6 +175,23 @@ export default function GameScreen() {
     ]);
   }
 
+  function deleteGame() {
+    Alert.alert('Obriši oglas?', 'Oglas će biti trajno obrisan. Ovo se ne može poništiti.', [
+      { text: 'Nazad', style: 'cancel' },
+      {
+        text: 'Obriši',
+        style: 'destructive',
+        onPress: async () => {
+          setActing(true);
+          const { error } = await supabase.rpc('delete_game', { p_game_id: id });
+          setActing(false);
+          if (error) return Alert.alert('Greška', error.message);
+          router.back();
+        },
+      },
+    ]);
+  }
+
   const markAttendance = (playerId: string, showedUp: boolean) =>
     run(() => supabase.rpc('mark_attendance', { p_game_id: id, p_player_id: playerId, p_showed_up: showedUp }));
 
@@ -191,13 +208,14 @@ export default function GameScreen() {
   if (error || !game) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
-        <Text style={{ color: '#666' }}>{error || 'Termin nije pronađen.'}</Text>
+        <Text style={{ color: '#666', textAlign: 'center' }}>{error || 'Termin nije pronađen.'}</Text>
       </View>
     );
   }
 
   const isOrganizer = game.organizer_id === uid;
   const hasStarted = new Date(game.starts_at) <= new Date();
+  const isActive = (game.status === 'open' || game.status === 'full') && !hasStarted;
   const spotsLeft = extra?.spots_left ?? game.players_needed;
   const hasMap = extra?.lat != null && extra?.lng != null;
   const pending = requests.filter((r) => r.status === 'pending');
@@ -331,12 +349,26 @@ export default function GameScreen() {
       {/* Donja traka s akcijom */}
       <View style={{ borderTopWidth: 1, borderTopColor: '#eee', padding: 16, paddingBottom: insets.bottom + 12, backgroundColor: '#fff' }}>
         {isOrganizer ? (
-          game.status === 'cancelled' ? <Info text="Otkazao si ovaj termin." />
-          : hasStarted || game.status === 'finished' ? <Info text="Termin je počeo ili završio. Označi dolaske iznad." />
-          : (
+          isActive ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <OutlineButton
+                  label="✏️ Uredi"
+                  color={GREEN}
+                  onPress={() => router.push({ pathname: '/create', params: { id } })}
+                  disabled={acting}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                {approved.length === 0
+                  ? <OutlineButton label="Obriši oglas" color="#d00" onPress={deleteGame} disabled={acting} />
+                  : <OutlineButton label="Otkaži termin" color="#d00" onPress={cancelGame} disabled={acting} />}
+              </View>
+            </View>
+          ) : (
             <>
-              <Info text="Ovo je tvoj oglas." />
-              <SecondaryButton label="Otkaži termin" onPress={cancelGame} disabled={acting} />
+              <Info text={game.status === 'cancelled' ? 'Otkazao si ovaj termin.' : 'Termin je počeo ili završio. Označi dolaske iznad.'} />
+              <OutlineButton label="Obriši oglas" color="#d00" onPress={deleteGame} disabled={acting} />
             </>
           )
         ) : (
@@ -372,14 +404,14 @@ function PlayerActions(p: {
       return (
         <>
           <Info text="⏳ Prijava poslana, čeka odobrenje organizatora." />
-          <SecondaryButton label="Otkaži prijavu" onPress={p.onCancel} disabled={p.acting} />
+          <OutlineButton label="Otkaži prijavu" color="#d00" onPress={p.onCancel} disabled={p.acting} />
         </>
       );
     case 'approved':
       return (
         <>
           <Info text="✅ Odobren si! Kontakt organizatora je iznad." />
-          <SecondaryButton label="Ne mogu doći" onPress={p.onCancel} disabled={p.acting} />
+          <OutlineButton label="Ne mogu doći" color="#d00" onPress={p.onCancel} disabled={p.acting} />
         </>
       );
     case 'rejected':
@@ -471,14 +503,14 @@ function Info({ text }: { text: string }) {
   return <Text style={{ color: '#444', textAlign: 'center', marginBottom: 8, fontSize: 15 }}>{text}</Text>;
 }
 
-function SecondaryButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+function OutlineButton({ label, color, onPress, disabled }: { label: string; color: string; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', opacity: disabled ? 0.6 : 1 }}
     >
-      <Text style={{ color: '#d00', fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
 }

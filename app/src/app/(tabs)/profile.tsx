@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
@@ -21,6 +21,7 @@ export default function Profile() {
   const [attended, setAttended] = useState(0);
   const [noShow, setNoShow] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState('');
 
   useFocusEffect(useCallback(() => {
@@ -56,6 +57,42 @@ export default function Profile() {
       .upsert({ user_id: uid, phone: clean(phone), instagram: ig || null, facebook: clean(facebook) });
     setSaving(false);
     setMessage(e1 || e2 ? (e1 ?? e2)!.message : 'Sačuvano ✓');
+  }
+
+  async function signOut() {
+    await unregisterPush();
+    await supabase.auth.signOut();
+  }
+
+  // Brisanje naloga: dvostruka potvrda jer se ne može poništiti
+  function confirmDelete() {
+    Alert.alert(
+      'Obrisati nalog?',
+      'Trajno se brišu tvoj profil, kontakti, oglasi, prijave i obavijesti. Tvoji aktivni termini se otkazuju i igrači dobijaju obavijest.',
+      [
+        { text: 'Odustani', style: 'cancel' },
+        {
+          text: 'Nastavi',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Jesi li siguran?', 'Ovo se ne može poništiti.', [
+              { text: 'Odustani', style: 'cancel' },
+              { text: 'Obriši nalog', style: 'destructive', onPress: deleteAccount },
+            ]),
+        },
+      ],
+    );
+  }
+
+  async function deleteAccount() {
+    setDeleting(true);
+    const { error } = await supabase.rpc('delete_my_account');
+    if (error) {
+      setDeleting(false);
+      return Alert.alert('Greška', error.message);
+    }
+    // Nalog više ne postoji na serveru, pa brišemo samo sesiju na telefonu
+    await supabase.auth.signOut({ scope: 'local' });
   }
 
   const total = attended + noShow;
@@ -101,10 +138,17 @@ export default function Profile() {
           </Pressable>
 
           <Pressable
-            onPress={async () => { await unregisterPush(); await supabase.auth.signOut(); }}
+            onPress={signOut}
             style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12 }}
           >
             <Text style={{ color: '#d00', fontWeight: '700' }}>Odjavi se</Text>
+          </Pressable>
+
+          {/* Opasna zona */}
+          <Pressable onPress={confirmDelete} disabled={deleting} style={{ alignItems: 'center', marginTop: 32, padding: 8 }}>
+            {deleting
+              ? <ActivityIndicator />
+              : <Text style={{ color: '#999', textDecorationLine: 'underline' }}>Obriši nalog</Text>}
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

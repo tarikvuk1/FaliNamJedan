@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, Text, TextInput, View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { router } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { useSports } from '../lib/sports';
@@ -19,7 +19,10 @@ function defaultStart() {
   return d;
 }
 
+// Isti ekran služi za novi oglas (/create) i za izmjenu (/create?id=...)
 export default function CreateGame() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const isEdit = !!id;
   const { session } = useAuth();
   const sports = useSports();
 
@@ -35,8 +38,39 @@ export default function CreateGame() {
   const [price, setPrice] = useState('');
   const [level, setLevel] = useState<Level>('any');
   const [note, setNote] = useState('');
+  const [loadingGame, setLoadingGame] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Izmjena: učitaj postojeći oglas
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      const [{ data: g }, { data: ex }] = await Promise.all([
+        supabase
+          .from('games')
+          .select('sport_id, city, venue_name, address, starts_at, duration_minutes, players_needed, price_per_person, level, note')
+          .eq('id', id)
+          .single(),
+        supabase.rpc('game_extra', { p_game_id: id }).maybeSingle(),
+      ]);
+      if (g) {
+        setSportId(g.sport_id);
+        setCity(g.city);
+        setVenue(g.venue_name);
+        setAddress(g.address ?? '');
+        setDate(new Date(g.starts_at));
+        setDuration(g.duration_minutes);
+        setNeeded(g.players_needed);
+        setPrice(g.price_per_person != null ? String(g.price_per_person) : '');
+        setLevel(g.level);
+        setNote(g.note ?? '');
+      }
+      const e = ex as { lat: number | null; lng: number | null } | null;
+      if (e?.lat != null && e?.lng != null) setCoords({ latitude: e.lat, longitude: e.lng });
+      setLoadingGame(false);
+    })();
+  }, [id]);
 
   function openAndroidPicker() {
     DateTimePickerAndroid.open({
@@ -56,7 +90,7 @@ export default function CreateGame() {
     });
   }
 
-  async function publish() {
+  async function save() {
     if (!sportId) return setError('Izaberi sport.');
     if (!venue.trim()) return setError('Unesi teren ili salu.');
     if (!city) return setError('Izaberi grad.');
@@ -68,28 +102,54 @@ export default function CreateGame() {
     setSaving(true);
     setError('');
 
-    const { error } = await supabase.from('games').insert({
-      organizer_id: session!.user.id,
-      sport_id: sportId,
-      city,
-      venue_name: venue.trim(),
-      address: address.trim() || null,
-      location: coords ? `SRID=4326;POINT(${coords.longitude} ${coords.latitude})` : null,
-      starts_at: date.toISOString(),
-      duration_minutes: duration,
-      players_needed: needed,
-      price_per_person: priceNum,
-      level,
-      note: note.trim() || null,
-    });
+    const { error } = isEdit
+      ? await supabase.rpc('update_game', {
+          p_game_id: id,
+          p_sport_id: sportId,
+          p_city: city,
+          p_venue_name: venue.trim(),
+          p_address: address.trim() || null,
+          p_lat: coords?.latitude ?? null,
+          p_lng: coords?.longitude ?? null,
+          p_starts_at: date.toISOString(),
+          p_duration: duration,
+          p_players_needed: needed,
+          p_price: priceNum,
+          p_level: level,
+          p_note: note.trim() || null,
+        })
+      : await supabase.from('games').insert({
+          organizer_id: session!.user.id,
+          sport_id: sportId,
+          city,
+          venue_name: venue.trim(),
+          address: address.trim() || null,
+          location: coords ? `SRID=4326;POINT(${coords.longitude} ${coords.latitude})` : null,
+          starts_at: date.toISOString(),
+          duration_minutes: duration,
+          players_needed: needed,
+          price_per_person: priceNum,
+          level,
+          note: note.trim() || null,
+        });
 
     setSaving(false);
     if (error) return setError(error.message);
     router.back();
   }
 
+  if (loadingGame) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+        <Stack.Screen options={{ title: 'Uredi oglas' }} />
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: '#fff' }}>
+      <Stack.Screen options={{ title: isEdit ? 'Uredi oglas' : 'Novi oglas' }} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
@@ -182,16 +242,22 @@ export default function CreateGame() {
         <Label text="Napomena" />
         <Input value={note} onChange={setNote} placeholder="npr. treba golman, ponesite tamne majice" multiline />
 
+        {isEdit && (
+          <Text style={{ color: '#888', marginTop: 16 }}>
+            Svi prijavljeni igrači dobit će obavijest da je termin izmijenjen.
+          </Text>
+        )}
+
         {!!error && <Text style={{ color: '#d00', marginTop: 16 }}>{error}</Text>}
 
         <Pressable
-          onPress={publish}
+          onPress={save}
           disabled={saving}
           style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: saving ? 0.6 : 1 }}
         >
           {saving
             ? <ActivityIndicator color="#fff" />
-            : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Objavi oglas</Text>}
+            : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{isEdit ? 'Sačuvaj izmjene' : 'Objavi oglas'}</Text>}
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

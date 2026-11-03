@@ -22,6 +22,7 @@ const TEXTS: Record<string, { icon: string; text: string }> = {
   request_expired:  { icon: '⌛', text: 'Tvoja prijava je istekla' },
   player_left:      { icon: '🚶', text: 'Igrač je otkazao dolazak, mjesto je ponovo otvoreno' },
   game_cancelled:   { icon: '🚫', text: 'Organizator je otkazao termin' },
+  game_updated:     { icon: '✏️', text: 'Organizator je izmijenio termin. Provjeri vrijeme i mjesto.' },
   new_game:         { icon: '📣', text: 'Novi termin za sport koji pratiš' },
 };
 
