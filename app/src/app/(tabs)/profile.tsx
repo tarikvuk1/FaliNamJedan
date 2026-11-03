@@ -8,6 +8,7 @@ import { GREEN } from '../../lib/ui';
 import { CityField } from '../../components/CityPicker';
 import { unregisterPush } from '../../lib/push';
 import { BlockedUsersModal } from '../../components/ReportModal';
+import { ChangePasswordModal } from '../../components/ChangePasswordModal';
 
 export default function Profile() {
   const { session } = useAuth();
@@ -24,6 +25,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [message, setMessage] = useState('');
 
   useFocusEffect(useCallback(() => {
@@ -145,6 +147,14 @@ export default function Profile() {
           >
             <Text style={{ color: '#d00', fontWeight: '700' }}>Odjavi se</Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => setPasswordOpen(true)}
+            style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12 }}
+          >
+            <Text style={{ color: '#333', fontWeight: '600' }}>Promijeni lozinku</Text>
+          </Pressable>
+          <ChangePasswordModal visible={passwordOpen} onClose={() => setPasswordOpen(false)} />
 
           <Pressable
             onPress={() => setBlockedOpen(true)}
