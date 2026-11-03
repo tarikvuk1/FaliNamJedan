@@ -71,6 +71,12 @@ function RootStack() {
           options={{ headerShown: true, title: 'Termin', headerBackTitle: 'Nazad' }}
         />
       </Stack.Protected>
+
+      {/* Pravni dokumenti su dostupni svima, i prije prijave */}
+      <Stack.Screen
+        name="legal/[doc]"
+        options={{ headerShown: true, title: '', headerBackTitle: 'Nazad' }}
+      />
     </Stack>
   );
 }

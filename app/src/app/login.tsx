@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, Text, TextInput,
+  Pressable, ScrollView, Text, TextInput, View,
 } from 'react-native';
+import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { GREEN } from '../lib/ui';
 
@@ -18,6 +19,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
+  const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,7 +55,13 @@ export default function Login() {
   const register = () => withLoading(async () => {
     if (!cleanEmail().includes('@')) throw new Error('Unesi ispravan email.');
     if (password.length < 6) throw new Error('Lozinka mora imati bar 6 znakova.');
-    const { error } = await supabase.auth.signUp({ email: cleanEmail(), password });
+    if (!accepted) throw new Error('Za registraciju moraš prihvatiti Uslove korištenja i Politiku privatnosti.');
+    const { error } = await supabase.auth.signUp({
+      email: cleanEmail(),
+      password,
+      // Zapis o saglasnosti (vidljiv u Supabaseu uz korisnika)
+      options: { data: { terms_accepted_at: new Date().toISOString(), terms_version: '2026-11-03' } },
+    });
     if (error) throw error;
   });
 
@@ -143,6 +151,28 @@ export default function Login() {
             textContentType={mode === 'login' ? 'password' : 'newPassword'}
             style={[inputStyle, { marginTop: 12 }]}
           />
+        )}
+
+        {mode === 'register' && (
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 16 }}>
+            <Pressable
+              onPress={() => setAccepted(!accepted)}
+              hitSlop={10}
+              style={{
+                width: 24, height: 24, borderRadius: 6, borderWidth: 2, marginRight: 10, marginTop: 1,
+                borderColor: accepted ? GREEN : '#bbb', backgroundColor: accepted ? GREEN : '#fff',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {accepted && <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text>}
+            </Pressable>
+            <Text style={{ flex: 1, color: '#444', lineHeight: 21 }}>
+              Imam 16 ili više godina i slažem se s{' '}
+              <Text style={{ color: GREEN, fontWeight: '600' }} onPress={() => router.push('/legal/terms')}>Uslovima korištenja</Text>
+              {' '}i{' '}
+              <Text style={{ color: GREEN, fontWeight: '600' }} onPress={() => router.push('/legal/privacy')}>Politikom privatnosti</Text>.
+            </Text>
+          </View>
         )}
 
         {!!error && <Text style={{ color: '#d00', marginTop: 12 }}>{error}</Text>}

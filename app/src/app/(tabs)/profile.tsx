@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { Linking } from 'react-native';
+import { CONTACT_EMAIL } from '../../lib/legal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
@@ -164,6 +166,13 @@ export default function Profile() {
           </Pressable>
           <BlockedUsersModal visible={blockedOpen} onClose={() => setBlockedOpen(false)} />
 
+          {/* Pravni dokumenti i kontakt */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 28 }}>
+            <SmallLink text="Uslovi korištenja" onPress={() => router.push('/legal/terms')} />
+            <SmallLink text="Politika privatnosti" onPress={() => router.push('/legal/privacy')} />
+            <SmallLink text="Kontakt" onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)} />
+          </View>
+
           {/* Opasna zona */}
           <Pressable onPress={confirmDelete} disabled={deleting} style={{ alignItems: 'center', marginTop: 32, padding: 8 }}>
             {deleting
@@ -176,7 +185,15 @@ export default function Profile() {
   );
 }
 
-function Field(props: { label: string; value: string; onChange: (v: string) => void; keyboard?: 'default' | 'phone-pad' }) {
+function SmallLink({ text, onPress }: { text: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
+      <Text style={{ color: '#666', fontSize: 13 }}>{text}</Text>
+    </Pressable>
+  );
+}
+
+function Field(props:{ label: string; value: string; onChange: (v: string) => void; keyboard?: 'default' | 'phone-pad' }) {
   return (
     <View style={{ marginTop: 12 }}>
       <Text style={{ color: '#444', marginBottom: 6 }}>{props.label}</Text>
