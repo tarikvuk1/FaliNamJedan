@@ -15,7 +15,8 @@ import { CityField } from '../../components/CityPicker';
 import { BlockedUsersModal } from '../../components/ReportModal';
 import { ChangePasswordModal } from '../../components/ChangePasswordModal';
 import { FollowsModal } from '../../components/FollowsModal';
-import { Avatar } from '../../components/Visuals';
+import { Avatar, badgesFor } from '../../components/Visuals';
+import { MySportsModal } from '../../components/MySportsModal';
 
 export default function Profile() {
   const { session } = useAuth();
@@ -35,6 +36,8 @@ export default function Profile() {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [followsOpen, setFollowsOpen] = useState(false);
+  const [sportsOpen, setSportsOpen] = useState(false);
+  const [organized, setOrganized] = useState(0);
 
   useFocusEffect(useCallback(() => {
     supabase.from('profiles').select('first_name, last_name, city, games_attended, games_no_show').eq('id', uid).single()
@@ -46,6 +49,9 @@ export default function Profile() {
         setAttended(data.games_attended);
         setNoShow(data.games_no_show);
       });
+    supabase.from('games').select('id', { count: 'exact', head: true })
+      .eq('organizer_id', uid).neq('status', 'cancelled').lt('starts_at', new Date().toISOString())
+      .then(({ count }) => setOrganized(count ?? 0));
     supabase.from('profile_contacts').select('phone, instagram, facebook').eq('user_id', uid).maybeSingle()
       .then(({ data }) => {
         setPhone(data?.phone ?? '');
@@ -113,6 +119,7 @@ export default function Profile() {
   const total = attended + noShow;
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Tvoj profil';
   const pct = total > 0 ? Math.round((attended / total) * 100) : null;
+  const badges = badgesFor({ attended, noShow, organized });
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.bg }}>
@@ -130,6 +137,18 @@ export default function Profile() {
             <Stat label="Pouzdanost" value={pct != null ? `${pct}%` : '–'} color={pct == null ? C.muted : pct >= 80 ? C.accent : pct >= 50 ? C.warn : C.danger} />
             <Stat label="Došao" value={String(attended)} />
             <Stat label="Nije došao" value={String(noShow)} last />
+          </View>
+
+          {/* Bedževi */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 }}>
+            {badges.length === 0 ? (
+              <Text style={{ color: C.faint, fontSize: 13 }}>Odigraj prvi termin i osvoji prvi bedž ⚽</Text>
+            ) : badges.map((b) => (
+              <View key={b.label} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card2, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: C.border }}>
+                <Text style={{ marginRight: 6 }}>{b.icon}</Text>
+                <Text style={{ color: C.text2, fontWeight: '700', fontSize: 13 }}>{b.label}</Text>
+              </View>
+            ))}
           </View>
 
           {/* Podaci */}
@@ -166,6 +185,7 @@ export default function Profile() {
           {/* Postavke */}
           <SectionTitle style={{ marginTop: 32 }}>Postavke</SectionTitle>
           <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, overflow: 'hidden' }}>
+            <Row icon="football-outline" label="Moji sportovi i pozicije" onPress={() => setSportsOpen(true)} />
             <Row icon="notifications-outline" label="Praćenje sportova" onPress={() => setFollowsOpen(true)} />
             <Row icon="key-outline" label="Promijeni lozinku" onPress={() => setPasswordOpen(true)} />
             <Row icon="ban-outline" label="Blokirani korisnici" onPress={() => setBlockedOpen(true)} />
@@ -183,6 +203,7 @@ export default function Profile() {
           </Pressable>
 
           <FollowsModal visible={followsOpen} onClose={() => setFollowsOpen(false)} />
+          <MySportsModal visible={sportsOpen} onClose={() => setSportsOpen(false)} />
           <ChangePasswordModal visible={passwordOpen} onClose={() => setPasswordOpen(false)} />
           <BlockedUsersModal visible={blockedOpen} onClose={() => setBlockedOpen(false)} />
         </ScrollView>

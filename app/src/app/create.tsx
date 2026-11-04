@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, Text, TextInput, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
+  ScrollView, Switch, Text, TextInput, View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { useSports } from '../lib/sports';
-import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../lib/format';
+import { formatDateTime, LEVELS, Level, POSITIONS, SPORT_EMOJI } from '../lib/format';
+import { shareGame } from '../lib/share';
+import { success } from '../lib/haptics';
 import { Chip, GREEN } from '../lib/ui';
 import { LocationPicker } from '../components/LocationPicker';
 import { CityField } from '../components/CityPicker';
@@ -39,6 +41,8 @@ export default function CreateGame() {
   const [price, setPrice] = useState('');
   const [level, setLevel] = useState<Level>('any');
   const [note, setNote] = useState('');
+  const [position, setPosition] = useState('');
+  const [repeat, setRepeat] = useState(false);
   const [loadingGame, setLoadingGame] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +54,7 @@ export default function CreateGame() {
       const [{ data: g }, { data: ex }] = await Promise.all([
         supabase
           .from('games')
-          .select('sport_id, city, venue_name, address, starts_at, duration_minutes, players_needed, price_per_person, level, note')
+          .select('sport_id, city, venue_name, address, starts_at, duration_minutes, players_needed, price_per_person, level, note, wanted_position, repeat_weekly')
           .eq('id', id)
           .single(),
         supabase.rpc('game_extra', { p_game_id: id }).maybeSingle(),
@@ -66,6 +70,8 @@ export default function CreateGame() {
         setPrice(g.price_per_person != null ? String(g.price_per_person) : '');
         setLevel(g.level);
         setNote(g.note ?? '');
+        setPosition(g.wanted_position ?? '');
+        setRepeat(!!g.repeat_weekly);
       }
       const e = ex as { lat: number | null; lng: number | null } | null;
       if (e?.lat != null && e?.lng != null) setCoords({ latitude: e.lat, longitude: e.lng });
@@ -103,7 +109,8 @@ export default function CreateGame() {
     setSaving(true);
     setError('');
 
-    const { error } = isEdit
+    const sport = sports.find((s) => s.id === sportId);
+    const result = isEdit
       ? await supabase.rpc('update_game', {
           p_game_id: id,
           p_sport_id: sportId,
@@ -132,11 +139,43 @@ export default function CreateGame() {
           price_per_person: priceNum,
           level,
           note: note.trim() || null,
-        });
+          wanted_position: position.trim() || null,
+          repeat_weekly: repeat,
+        }).select('id').single();
+
+    if (result.error) {
+      setSaving(false);
+      return setError(result.error.message);
+    }
+
+    if (isEdit) {
+      const { error: e2 } = await supabase.rpc('update_game_extras', {
+        p_game_id: id, p_wanted_position: position.trim() || null, p_repeat: repeat,
+      });
+      setSaving(false);
+      if (e2) return setError(e2.message);
+      return router.back();
+    }
 
     setSaving(false);
-    if (error) return setError(error.message);
+    success();
+    const newId = (result.data as { id: string } | null)?.id;
     router.back();
+    if (newId) {
+      // Odmah ponudi dijeljenje u grupu: tako se igrač najbrže nađe
+      setTimeout(() => {
+        Alert.alert('Objavljeno! 🎉', 'Podijeli termin u WhatsApp ili Viber grupu da igrač brže uskoči.', [
+          { text: 'Kasnije', style: 'cancel' },
+          {
+            text: 'Podijeli',
+            onPress: () => shareGame({
+              id: newId, sportName: sport?.name, emoji: SPORT_EMOJI[sport?.slug ?? ''], venue: venue.trim(),
+              city: city!, startsAt: date.toISOString(), spotsLeft: needed, position: position.trim() || null,
+            }),
+          },
+        ]);
+      }, 400);
+    }
   }
 
   if (loadingGame) {
@@ -230,6 +269,15 @@ export default function CreateGame() {
           <StepButton label="+" onPress={() => setNeeded(Math.min(20, needed + 1))} />
         </View>
 
+        <Label text="Tražite određenu poziciju?" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          <Chip label="Bilo ko" active={!position} onPress={() => setPosition('')} />
+          {(POSITIONS[sports.find((s) => s.id === sportId)?.slug ?? ''] ?? []).map((pos) => (
+            <Chip key={pos} label={pos} active={position === pos} onPress={() => setPosition(pos)} />
+          ))}
+        </View>
+        <Input value={position} onChange={setPosition} placeholder="ili upiši, npr. lijevoruki igrač" />
+
         <Label text="Cijena po osobi (KM)" />
         <Input value={price} onChange={setPrice} placeholder="npr. 5 (neobavezno)" keyboard="decimal-pad" />
 
@@ -241,7 +289,17 @@ export default function CreateGame() {
         </View>
 
         <Label text="Napomena" />
-        <Input value={note} onChange={setNote} placeholder="npr. treba golman, ponesite tamne majice" multiline />
+        <Input value={note} onChange={setNote} placeholder="npr. ponesite tamne majice" multiline />
+
+        <View style={[inputBox, { flexDirection: 'row', alignItems: 'center', marginTop: 20 }]}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={{ color: C.text, fontWeight: '700' }}>🔁 Ponavljaj svake sedmice</Text>
+            <Text style={{ color: C.muted, marginTop: 2, fontSize: 13, lineHeight: 18 }}>
+              Nakon termina, isti se sam objavi za sljedeću sedmicu, a igrači s ovog termina dobiju poziv.
+            </Text>
+          </View>
+          <Switch value={repeat} onValueChange={setRepeat} trackColor={{ true: C.accent, false: C.card2 }} thumbColor="#fff" />
+        </View>
 
         {isEdit && (
           <Text style={{ color: C.muted, marginTop: 16 }}>

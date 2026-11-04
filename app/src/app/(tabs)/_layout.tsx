@@ -1,13 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../lib/auth';
-import { useUnreadCount } from '../../lib/unread';
+import { useChatUnread, useUnreadCount } from '../../lib/unread';
 import { C } from '../../lib/theme';
 import { tap } from '../../lib/haptics';
 
 export default function TabsLayout() {
   const { session } = useAuth();
   const unread = useUnreadCount(session?.user.id);
+  const chat = useChatUnread(session?.user.id);
 
   return (
     <Tabs
@@ -33,6 +34,7 @@ export default function TabsLayout() {
         name="my-games"
         options={{
           title: 'Moji termini',
+          tabBarBadge: chat.total > 0 ? (chat.total > 99 ? '99+' : chat.total) : undefined,
           tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'calendar' : 'calendar-outline'} color={color as string} size={size} />,
         }}
       />

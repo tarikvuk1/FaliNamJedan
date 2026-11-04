@@ -1,18 +1,21 @@
 import { ReactNode, useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
-import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
+import { formatDateTime, isUrgent, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
 import { C, F, sportColor } from '../../lib/theme';
 import { OutlineButton, PrimaryButton, SectionTitle } from '../../lib/ui';
 import { success, tap, warning } from '../../lib/haptics';
 import { Avatar, PlayerSlots } from '../../components/Visuals';
 import { facebookLabel, facebookUrl, instagramUrl } from '../../lib/contacts';
 import { ReportModal, ReportTarget } from '../../components/ReportModal';
+import { InviteModal } from '../../components/InviteModal';
+import { shareGame } from '../../lib/share';
+import { useChatUnread } from '../../lib/unread';
 
 type GameDetails = {
   id: string;
@@ -27,6 +30,8 @@ type GameDetails = {
   level: Level;
   note: string | null;
   status: 'open' | 'full' | 'cancelled' | 'finished';
+  wanted_position: string | null;
+  repeat_weekly: boolean;
   sport: { name: string; slug: string } | null;
   organizer: { first_name: string | null; last_name: string | null; games_attended: number; games_no_show: number } | null;
 };
@@ -35,6 +40,7 @@ type MyRequest = { id: string; status: 'pending' | 'approved' | 'rejected' | 'ca
 type Contacts = { phone: string | null; instagram: string | null; facebook: string | null; other: string | null };
 type Player = { id: string; first_name: string | null; last_name: string | null; games_attended: number; games_no_show: number };
 type Req = { id: string; status: 'pending' | 'approved'; message: string | null; player: Player | null };
+type PlayerSport = { level: Level; position: string | null };
 
 const fullName = (p: { first_name: string | null; last_name: string | null } | null) =>
   [p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Nepoznato';
@@ -58,13 +64,17 @@ export default function GameScreen() {
   const [playerContacts, setPlayerContacts] = useState<Record<string, Contacts>>({});
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
+  const [playerSports, setPlayerSports] = useState<Record<string, PlayerSport>>({});
+  const [waitlisted, setWaitlisted] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const chatUnread = useChatUnread(uid).byGame[id] ?? 0;
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    const [{ data: g, error: e1 }, { data: ex }, { data: req }] = await Promise.all([
+    const [{ data: g, error: e1 }, { data: ex }, { data: req }, { data: wl }] = await Promise.all([
       supabase
         .from('games')
         .select('*, sport:sports(name, slug), organizer:profiles!games_organizer_id_fkey(first_name, last_name, games_attended, games_no_show)')
@@ -72,6 +82,7 @@ export default function GameScreen() {
         .maybeSingle(),
       supabase.rpc('game_extra', { p_game_id: id }).maybeSingle(),
       supabase.from('join_requests').select('id, status').eq('game_id', id).eq('player_id', uid).maybeSingle(),
+      supabase.from('game_waitlist').select('game_id').eq('game_id', id).eq('player_id', uid).maybeSingle(),
     ]);
 
     if (e1 || !g) {
@@ -84,6 +95,7 @@ export default function GameScreen() {
     setGame(gameData);
     setExtra(ex as Extra);
     setMyRequest(req as MyRequest);
+    setWaitlisted(!!wl);
 
     if (gameData.organizer_id === uid) {
       const { data: reqs } = await supabase
@@ -94,6 +106,16 @@ export default function GameScreen() {
         .order('created_at');
       const list = (reqs ?? []) as unknown as Req[];
       setRequests(list);
+
+      // Nivo i pozicija prijavljenih igrača za ovaj sport
+      const playerIds = list.map((r) => r.player?.id).filter(Boolean) as string[];
+      if (playerIds.length) {
+        const { data: us } = await supabase.from('user_sports').select('user_id, level, position')
+          .eq('sport_id', (g as any).sport_id).in('user_id', playerIds);
+        const map: Record<string, PlayerSport> = {};
+        (us ?? []).forEach((u: any) => { map[u.user_id] = { level: u.level, position: u.position }; });
+        setPlayerSports(map);
+      }
 
       const approvedIds = list.filter((r) => r.status === 'approved' && r.player).map((r) => r.player!.id);
       if (approvedIds.length) {
@@ -156,6 +178,30 @@ export default function GameScreen() {
         },
       ],
     );
+  }
+
+  async function joinWaitlist() {
+    tap();
+    const { error } = await supabase.from('game_waitlist').insert({ game_id: id, player_id: uid });
+    if (error) { warning(); return Alert.alert('Greška', error.message); }
+    success();
+    setWaitlisted(true);
+  }
+
+  async function leaveWaitlist() {
+    const { error } = await supabase.from('game_waitlist').delete().eq('game_id', id).eq('player_id', uid);
+    if (error) return Alert.alert('Greška', error.message);
+    setWaitlisted(false);
+  }
+
+  function share() {
+    if (!game) return;
+    tap();
+    shareGame({
+      id: game.id, sportName: game.sport?.name, emoji: SPORT_EMOJI[game.sport?.slug ?? ''],
+      venue: game.venue_name, city: game.city, startsAt: game.starts_at,
+      spotsLeft: Math.max(1, extra?.spots_left ?? game.players_needed), position: game.wanted_position,
+    });
   }
 
   // ---------- Akcije organizatora ----------
@@ -228,6 +274,16 @@ export default function GameScreen() {
   const hasMap = extra?.lat != null && extra?.lng != null;
   const pending = requests.filter((r) => r.status === 'pending');
   const approved = requests.filter((r) => r.status === 'approved');
+  const urgent = isActive && isUrgent(game.starts_at, spotsLeft);
+  const minutesLeft = Math.max(0, Math.round((new Date(game.starts_at).getTime() - Date.now()) / 60000));
+  const canChat = game.status !== 'cancelled' && (isOrganizer || myRequest?.status === 'approved');
+  const sportInfo = (pid?: string) => {
+    const ps = pid ? playerSports[pid] : undefined;
+    if (!ps) return '';
+    return [ps.position, ps.level !== 'any' ? LEVELS[ps.level] : null].filter(Boolean).join(' · ');
+  };
+  const personSub = (pl: Player | null) =>
+    [sportInfo(pl?.id), reliability(pl?.games_attended ?? 0, pl?.games_no_show ?? 0)].filter(Boolean).join(' · ');
 
   const statusText = game.status === 'cancelled' ? 'Otkazano'
     : game.status === 'finished' || hasStarted ? 'Završeno'
@@ -237,7 +293,22 @@ export default function GameScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <Stack.Screen options={{
+        headerRight: () => game.status !== 'cancelled' && !hasStarted ? (
+          <Pressable onPress={share} hitSlop={10} accessibilityLabel="Podijeli termin">
+            <Ionicons name="share-outline" size={23} color={C.accent} />
+          </Pressable>
+        ) : null,
+      }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+        {urgent && (
+          <View style={{ backgroundColor: C.warn + '1F', borderColor: C.warn + '66', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 22, marginRight: 10 }}>🔥</Text>
+            <Text style={{ color: C.warn, fontWeight: '800', flex: 1 }}>
+              Hitno! Počinje za {minutesLeft < 60 ? `${minutesLeft} min` : `${Math.floor(minutesLeft / 60)} h ${minutesLeft % 60} min`}, a fali {spotsLeft === 1 ? 'jedan igrač' : `${spotsLeft} igrača`}.
+            </Text>
+          </View>
+        )}
         {/* ===== Zaglavlje termina ===== */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ backgroundColor: color + '22', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -248,7 +319,17 @@ export default function GameScreen() {
               <Text style={{ color: C.text2, fontWeight: '600' }}>{LEVELS[game.level]}</Text>
             </View>
           )}
+          {game.repeat_weekly && (
+            <View style={{ backgroundColor: C.card2, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 }}>
+              <Text style={{ color: C.text2, fontWeight: '600' }}>🔁 Svake sedmice</Text>
+            </View>
+          )}
         </View>
+        {!!game.wanted_position && (
+          <View style={{ alignSelf: 'flex-start', backgroundColor: color + '1F', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, marginTop: 10 }}>
+            <Text style={{ color, fontWeight: '800' }}>🎯 Traži se: {game.wanted_position}</Text>
+          </View>
+        )}
 
         <Text style={{ color: C.text, fontFamily: F.bold, fontSize: 26, marginTop: 12, lineHeight: 32 }}>{game.venue_name}</Text>
         <Text style={{ color: C.muted, marginTop: 4 }}>{[game.address, game.city].filter(Boolean).join(', ')}</Text>
@@ -271,6 +352,39 @@ export default function GameScreen() {
           </Text>
         </View>
 
+        {canChat && (
+          <Pressable
+            onPress={() => { tap(); router.push(`/chat/${id}`); }}
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', backgroundColor: pressed ? C.card2 : C.card, borderRadius: 18,
+              padding: 16, marginTop: 12, borderWidth: 1, borderColor: C.line,
+            })}
+          >
+            <Text style={{ fontSize: 22, marginRight: 12 }}>💬</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.text, fontFamily: F.semi, fontSize: 15 }}>Chat termina</Text>
+              <Text style={{ color: chatUnread ? C.accent : C.muted, fontSize: 13, marginTop: 1, fontWeight: chatUnread ? '700' : '400' }}>
+                {chatUnread ? `${chatUnread} ${chatUnread === 1 ? 'nova poruka' : 'nove poruke'}` : 'Dogovor s organizatorom i igračima'}
+              </Text>
+            </View>
+            {chatUnread > 0 && (
+              <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, marginRight: 8 }}>
+                <Text style={{ color: C.onAccent, fontWeight: '800', fontSize: 12 }}>{chatUnread}</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={18} color={C.faint} />
+          </Pressable>
+        )}
+
+        {isOrganizer && isActive && (
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            {spotsLeft > 0 && game.status === 'open' && (
+              <OutlineButton label="🙌 Pozovi igrače" color={C.accent} onPress={() => { tap(); setInviteOpen(true); }} style={{ flex: 1 }} />
+            )}
+            <OutlineButton label="📤 Podijeli" onPress={share} style={{ flex: 1 }} />
+          </View>
+        )}
+
         {/* ===== ORGANIZATOR: prijave ===== */}
         {isOrganizer && game.status !== 'cancelled' && (
           <>
@@ -278,7 +392,7 @@ export default function GameScreen() {
               <Section title={`Prijave na čekanju (${pending.length})`}>
                 {pending.length === 0 && <Text style={{ color: C.faint }}>Još nema novih prijava.</Text>}
                 {pending.map((r) => (
-                  <PersonCard key={r.id} name={fullName(r.player)} sub={reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}>
+                  <PersonCard key={r.id} name={fullName(r.player)} sub={personSub(r.player)}>
                     {!!r.message && <Text style={{ color: C.text2, marginTop: 8 }}>"{r.message}"</Text>}
                     <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
                       <PrimaryButton label="Odobri" onPress={() => approve(r.id)} disabled={acting || spotsLeft <= 0} style={{ flex: 1, padding: 12 }} />
@@ -296,7 +410,7 @@ export default function GameScreen() {
                 const pid = r.player?.id ?? '';
                 const marked = attendance[pid];
                 return (
-                  <PersonCard key={r.id} name={fullName(r.player)} sub={reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}>
+                  <PersonCard key={r.id} name={fullName(r.player)} sub={personSub(r.player)}>
                     {playerContacts[pid] && <ContactList c={playerContacts[pid]} />}
                     {hasStarted && (
                       <View style={{ flexDirection: 'row', marginTop: 10, gap: 8 }}>
@@ -378,8 +492,11 @@ export default function GameScreen() {
             spotsLeft={spotsLeft}
             request={myRequest}
             acting={acting}
+            waitlisted={waitlisted}
             onJoin={join}
             onCancel={cancelMyRequest}
+            onWaitlist={joinWaitlist}
+            onLeaveWaitlist={leaveWaitlist}
           />
         )}
       </View>
@@ -390,6 +507,7 @@ export default function GameScreen() {
         onClose={() => setReportTarget(null)}
         onBlocked={() => (isOrganizer ? load() : router.back())}
       />
+      {isOrganizer && <InviteModal gameId={id} visible={inviteOpen} onClose={() => { setInviteOpen(false); load(); }} />}
     </View>
   );
 }
@@ -400,8 +518,11 @@ function PlayerActions(p: {
   spotsLeft: number;
   request: MyRequest;
   acting: boolean;
+  waitlisted: boolean;
   onJoin: () => void;
   onCancel: () => void;
+  onWaitlist: () => void;
+  onLeaveWaitlist: () => void;
 }) {
   if (p.gameStatus === 'cancelled') return <Info text="Organizator je otkazao termin." />;
   if (p.hasStarted || p.gameStatus === 'finished') return <Info text="Termin je počeo ili završio." />;
@@ -417,14 +538,26 @@ function PlayerActions(p: {
     case 'approved':
       return (
         <>
-          <Info text="✅ Odobren si! Kontakt organizatora je iznad." />
+          <Info text="✅ Odobren si! Kontakt organizatora i chat su iznad." />
           <OutlineButton label="Ne mogu doći" color={C.danger} onPress={p.onCancel} disabled={p.acting} />
         </>
       );
     case 'rejected':
       return <Info text="Organizator je odbio prijavu za ovaj termin." />;
     default:
-      if (p.gameStatus === 'full' || p.spotsLeft <= 0) return <Info text="Termin je popunjen." />;
+      if (p.gameStatus === 'full' || p.spotsLeft <= 0) {
+        return p.waitlisted ? (
+          <>
+            <Info text="⏳ Na listi čekanja si. Javimo ti čim se oslobodi mjesto." />
+            <OutlineButton label="Izađi s liste čekanja" onPress={p.onLeaveWaitlist} disabled={p.acting} />
+          </>
+        ) : (
+          <>
+            <Info text="Termin je popunjen." />
+            <OutlineButton label="🔔 Javi mi ako se oslobodi mjesto" color={C.accent} onPress={p.onWaitlist} disabled={p.acting} />
+          </>
+        );
+      }
       return <PrimaryButton label="Uskoči u termin" onPress={() => { tap(); p.onJoin(); }} loading={p.acting} />;
   }
 }

@@ -72,6 +72,9 @@ export function GameCard(p: {
   organizer?: string;
   distanceKm?: number | null;
   badge?: { text: string; color?: string };
+  urgent?: boolean;
+  position?: string | null;
+  repeat?: boolean;
   dimmed?: boolean;
   onPress: () => void;
 }) {
@@ -82,7 +85,7 @@ export function GameCard(p: {
       onPress={p.onPress}
       style={({ pressed }) => ({
         flexDirection: 'row', backgroundColor: pressed ? C.card2 : C.card, borderRadius: 18,
-        marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: C.line, opacity: p.dimmed ? 0.6 : 1,
+        marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: p.urgent ? C.warn + '88' : C.line, opacity: p.dimmed ? 0.6 : 1,
       })}
     >
       {/* Traka u boji sporta */}
@@ -100,6 +103,11 @@ export function GameCard(p: {
           <Text style={{ color, fontWeight: '700', fontSize: 13 }}>
             {SPORT_EMOJI[p.sportSlug ?? ''] ?? ''} {p.sportName?.toUpperCase()}
           </Text>
+          {p.urgent && !p.badge && (
+            <View style={{ backgroundColor: C.warn + '22', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ color: C.warn, fontSize: 12, fontWeight: '800' }}>🔥 HITNO</Text>
+            </View>
+          )}
           {p.badge && (
             <View style={{ backgroundColor: (p.badge.color ?? C.accent) + '22', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
               <Text style={{ color: p.badge.color ?? C.accent, fontSize: 12, fontWeight: '700' }}>{p.badge.text}</Text>
@@ -125,10 +133,12 @@ export function GameCard(p: {
           </View>
         )}
 
-        {(p.level || p.price != null) && (
-          <View style={{ flexDirection: 'row', marginTop: 8 }}>
+        {((p.level && p.level !== 'any') || p.price != null || !!p.position || p.repeat) && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+            {!!p.position && <Tag text={`Traži se: ${p.position}`} color={color} />}
             {p.level && p.level !== 'any' && <Tag text={LEVELS[p.level]} />}
             {p.price != null && <Tag text={`${p.price} KM`} />}
+            {p.repeat && <Tag text="🔁 Svake sedmice" />}
           </View>
         )}
       </View>
@@ -136,12 +146,42 @@ export function GameCard(p: {
   );
 }
 
-function Tag({ text }: { text: string }) {
+function Tag({ text, color }: { text: string; color?: string }) {
   return (
-    <View style={{ backgroundColor: C.card2, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, marginRight: 6 }}>
-      <Text style={{ color: C.text2, fontSize: 12, fontWeight: '600' }}>{text}</Text>
+    <View style={{ backgroundColor: color ? color + '1F' : C.card2, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, marginRight: 6, marginBottom: 4 }}>
+      <Text style={{ color: color ?? C.text2, fontSize: 12, fontWeight: '600' }}>{text}</Text>
     </View>
   );
+}
+
+// ---------------------------------------------------------------------
+// Znak aplikacije JEDAN: tri puna kruga i jedno prazno (isprekidano) mjesto
+// ---------------------------------------------------------------------
+export function LogoMark({ size = 24, color = C.accent }: { size?: number; color?: string }) {
+  const gap = Math.max(2, Math.round(size * 0.1));
+  const dot = (size - gap) / 2;
+  const border = Math.max(1.5, dot * 0.16);
+  return (
+    <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignContent: 'space-between' }}>
+      <View style={{ width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color }} />
+      <View style={{ width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color }} />
+      <View style={{ width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color }} />
+      <View style={{ width: dot, height: dot, borderRadius: dot / 2, borderWidth: border, borderColor: color, borderStyle: 'dashed' }} />
+    </View>
+  );
+}
+
+// Oznake (bedževi) igrača, računaju se iz statistike
+export function badgesFor(s: { attended: number; noShow: number; organized: number }) {
+  const out: { icon: string; label: string }[] = [];
+  const total = s.attended + s.noShow;
+  if (s.attended >= 1) out.push({ icon: '⚽', label: 'Prvi termin' });
+  if (s.attended >= 10) out.push({ icon: '🔟', label: '10 odigranih' });
+  if (s.attended >= 50) out.push({ icon: '🏆', label: '50 odigranih' });
+  if (total >= 5 && s.noShow === 0) out.push({ icon: '💎', label: 'Uvijek dođe' });
+  if (s.organized >= 5) out.push({ icon: '📣', label: 'Organizator' });
+  if (s.organized >= 25) out.push({ icon: '👑', label: 'Kapiten' });
+  return out;
 }
 
 // ---------------------------------------------------------------------

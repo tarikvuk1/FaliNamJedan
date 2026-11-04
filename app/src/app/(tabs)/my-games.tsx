@@ -8,6 +8,7 @@ import { C } from '../../lib/theme';
 import { ScreenTitle } from '../../lib/ui';
 import { tap } from '../../lib/haptics';
 import { EmptyState, GameCard } from '../../components/Visuals';
+import { useChatUnread } from '../../lib/unread';
 
 type GameRow = {
   id: string;
@@ -29,6 +30,7 @@ const EMPTY: Record<string, string> = {
 export default function MyGames() {
   const { session } = useAuth();
   const uid = session!.user.id;
+  const chat = useChatUnread(uid);
   const [sections, setSections] = useState<{ title: string; data: Item[] }[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -134,7 +136,9 @@ export default function MyGames() {
               venue={item.game.venue_name}
               city={item.game.city}
               startsAt={item.game.starts_at}
-              badge={{ text: item.badge, color: item.badgeColor }}
+              badge={!item.past && chat.byGame[item.game.id]
+                ? { text: `💬 ${chat.byGame[item.game.id]} ${chat.byGame[item.game.id] === 1 ? 'nova poruka' : 'nove poruke'}`, color: C.accent }
+                : { text: item.badge, color: item.badgeColor }}
               dimmed={item.past}
               onPress={() => { tap(); router.push(`/game/${item.game.id}`); }}
             />

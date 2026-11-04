@@ -46,3 +46,38 @@ export function useUnreadCount(userId?: string) {
 
   return count;
 }
+
+// Nepročitane poruke u chatovima termina: ukupno (broj na tabu "Moji termini") i po terminu
+export function useChatUnread(userId?: string) {
+  const [byGame, setByGame] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+
+    const load = async () => {
+      const { data } = await supabase.rpc('chat_unread');
+      if (!alive) return;
+      const map: Record<string, number> = {};
+      (data ?? []).forEach((r: { game_id: string; unread: number }) => { map[r.game_id] = r.unread; });
+      setByGame(map);
+    };
+
+    load();
+    listeners.add(load);
+    const interval = setInterval(load, 30000);
+    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') load(); });
+    const pushSub = Notifications.addNotificationReceivedListener(() => load());
+
+    return () => {
+      alive = false;
+      listeners.delete(load);
+      clearInterval(interval);
+      appSub.remove();
+      pushSub.remove();
+    };
+  }, [userId]);
+
+  const total = Object.values(byGame).reduce((a, b) => a + b, 0);
+  return { total, byGame };
+}

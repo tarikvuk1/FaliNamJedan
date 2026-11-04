@@ -7,12 +7,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { useSports } from '../../lib/sports';
-import { dayLabel, Level, SPORT_EMOJI } from '../../lib/format';
+import { dayLabel, isUrgent, Level, SPORT_EMOJI } from '../../lib/format';
 import { Chip } from '../../lib/ui';
 import { C, F } from '../../lib/theme';
 import { tap, success } from '../../lib/haptics';
 import { CityField } from '../../components/CityPicker';
-import { DayHeader, EmptyState, GameCard } from '../../components/Visuals';
+import { DayHeader, EmptyState, GameCard, LogoMark } from '../../components/Visuals';
+import { AvailabilityModal } from '../../components/AvailabilityModal';
 
 type Game = {
   id: string;
@@ -26,6 +27,8 @@ type Game = {
   level: Level;
   organizer_name: string;
   distance_km: number | null;
+  wanted_position: string | null;
+  repeat_weekly: boolean;
 };
 
 const NEARBY_RADIUS_KM = 15;
@@ -42,6 +45,14 @@ export default function Home() {
   const [following, setFollowing] = useState(false);
   const [nearby, setNearby] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
+  const [availOpen, setAvailOpen] = useState(false);
+  const [availCount, setAvailCount] = useState(0);
+
+  const loadAvailability = useCallback(async () => {
+    const { count } = await supabase.from('availability').select('id', { count: 'exact', head: true })
+      .eq('user_id', uid).gt('available_to', new Date().toISOString());
+    setAvailCount(count ?? 0);
+  }, [uid]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,7 +65,7 @@ export default function Home() {
     setGames(data ?? []);
   }, [sportId, city, nearby]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); loadAvailability(); }, [load, loadAvailability]));
 
   // Grupisanje po danima: Danas, Sutra, Subota 8.11. ...
   const sections = useMemo(() => {
@@ -159,6 +170,27 @@ export default function Home() {
         </Pressable>
       )}
 
+      {/* Slobodan sam */}
+      <Pressable
+        onPress={() => { tap(); setAvailOpen(true); }}
+        style={({ pressed }) => ({
+          flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 14, borderRadius: 16,
+          backgroundColor: availCount ? C.accentSoft : pressed ? C.card2 : C.card,
+          borderWidth: 1, borderColor: availCount ? 'rgba(34,197,94,0.4)' : C.line,
+        })}
+      >
+        <Text style={{ fontSize: 22, marginRight: 12 }}>🙋</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: availCount ? C.accent : C.text, fontFamily: F.semi, fontSize: 15 }}>
+            {availCount ? 'Označen si kao slobodan ✓' : 'Slobodan si za igru?'}
+          </Text>
+          <Text style={{ color: C.muted, fontSize: 13, marginTop: 1 }}>
+            {availCount ? 'Organizatori te mogu pozvati. Dodirni za izmjenu.' : 'Javi kad možeš, organizatori će te pozvati.'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={C.faint} />
+      </Pressable>
+
       {!!error && <Text style={{ color: C.danger, marginTop: 8 }}>{error}</Text>}
     </View>
   );
@@ -167,9 +199,10 @@ export default function Home() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Zaglavlje */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 24, fontFamily: F.bold, color: C.text }}>
-          Fali nam <Text style={{ color: C.accent }}>jedan</Text>
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <LogoMark size={24} />
+          <Text style={{ fontSize: 26, fontFamily: F.bold, color: C.text, marginLeft: 10, letterSpacing: -0.5 }}>Jedan</Text>
+        </View>
         <Pressable
           onPress={() => { tap(); router.push('/create'); }}
           style={({ pressed }) => ({
@@ -217,11 +250,15 @@ export default function Home() {
               level={item.level}
               organizer={item.organizer_name}
               distanceKm={item.distance_km}
+              urgent={isUrgent(item.starts_at, item.spots_left)}
+              position={item.wanted_position}
+              repeat={item.repeat_weekly}
               onPress={() => { tap(); router.push(`/game/${item.id}`); }}
             />
           );
         }}
       />
+      <AvailabilityModal visible={availOpen} onClose={() => setAvailOpen(false)} onChanged={loadAvailability} />
     </SafeAreaView>
   );
 }

@@ -32,7 +32,8 @@ function RootStack() {
     if (!ready) return;
 
     const openGame = (data: any) => {
-      if (data?.game_id) router.push(`/game/${data.game_id}`);
+      if (!data?.game_id) return;
+      router.push(data.chat ? `/chat/${data.game_id}` : `/game/${data.game_id}`);
     };
 
     Notifications.getLastNotificationResponseAsync().then((r) => {
@@ -77,6 +78,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="create" options={{ headerShown: true, title: 'Novi oglas' }} />
         <Stack.Screen name="game/[id]" options={{ headerShown: true, title: '' }} />
+        <Stack.Screen name="chat/[id]" options={{ headerShown: true, title: 'Chat' }} />
       </Stack.Protected>
 
       {/* Pravni dokumenti su dostupni svima, i prije prijave */}

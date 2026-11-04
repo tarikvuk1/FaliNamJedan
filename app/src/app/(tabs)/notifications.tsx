@@ -31,6 +31,13 @@ const TEXTS: Record<string, { icon: string; text: string; color: string }> = {
   new_game:         { icon: '📣', text: 'Novi termin za sport koji pratiš', color: C.accent },
   game_reminder:    { icon: '⏰', text: 'Tvoj termin počinje za manje od 2 sata', color: '#FACC15' },
   mark_attendance:  { icon: '📝', text: 'Označi ko je došao na tvoj termin', color: '#C084FC' },
+  urgent_game:      { icon: '🔥', text: 'Hitno: termin počinje uskoro, a fali im igrač. Uskoči!', color: C.warn },
+  game_for_you:     { icon: '🎯', text: 'Termin baš u vrijeme kad si slobodan', color: C.accent },
+  invite:           { icon: '🙌', text: 'Organizator te poziva na termin', color: C.accent },
+  repeat_invite:    { icon: '🔁', text: 'Termin na kojem si igrao ponavlja se. Prijavi se ponovo!', color: '#38BDF8' },
+  game_repeated:    { icon: '🔁', text: 'Tvoj sedmični termin je objavljen za sljedeću sedmicu', color: '#38BDF8' },
+  repeat_failed:    { icon: '⚠️', text: 'Sedmični termin nije ponovljen (možda imaš previše aktivnih oglasa)', color: C.warn },
+  spot_open:        { icon: '🟢', text: 'Oslobodilo se mjesto u terminu za koji čekaš. Brzo!', color: C.accent },
 };
 
 export default function Notifications() {

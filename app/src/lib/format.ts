@@ -52,3 +52,20 @@ export const SPORT_EMOJI: Record<string, string> = {
   football_11: '🥅', beach_volleyball: '🏖️', badminton: '🏸', squash: '🎾',
   running: '🏃', hiking: '🥾', cycling: '🚴',
 };
+
+// Pozicije po sportu (za "Traži se: golman" i profil igrača)
+export const POSITIONS: Record<string, string[]> = {
+  football: ['Golman', 'Odbrana', 'Vezni', 'Napad'],
+  football_11: ['Golman', 'Odbrana', 'Vezni', 'Napad'],
+  futsal: ['Golman', 'Odbrana', 'Krilo', 'Pivot'],
+  volleyball: ['Libero', 'Tehničar', 'Primač', 'Srednji bloker', 'Korektor'],
+  beach_volleyball: ['Bloker', 'Odbrana'],
+  basketball: ['Plejmejker', 'Bek', 'Krilo', 'Krilni centar', 'Centar'],
+  handball: ['Golman', 'Krilo', 'Bek', 'Pivot'],
+};
+
+// Hitno: počinje za manje od 2 sata, a još fali igrač
+export function isUrgent(startsAt: string | Date, spotsLeft?: number | null) {
+  const diff = new Date(startsAt).getTime() - Date.now();
+  return (spotsLeft ?? 1) > 0 && diff > 0 && diff <= 2 * 3600 * 1000;
+}
