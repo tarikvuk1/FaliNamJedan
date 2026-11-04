@@ -12,6 +12,7 @@ import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../lib/format';
 import { Chip, GREEN } from '../lib/ui';
 import { LocationPicker } from '../components/LocationPicker';
 import { CityField } from '../components/CityPicker';
+import { C } from '../lib/theme';
 
 function defaultStart() {
   const d = new Date();
@@ -140,7 +141,7 @@ export default function CreateGame() {
 
   if (loadingGame) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
         <Stack.Screen options={{ title: 'Uredi oglas' }} />
         <ActivityIndicator />
       </View>
@@ -148,7 +149,7 @@ export default function CreateGame() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: '#fff' }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: C.bg }}>
       <Stack.Screen options={{ title: isEdit ? 'Uredi oglas' : 'Novi oglas' }} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
@@ -170,7 +171,7 @@ export default function CreateGame() {
           onPress={() => setPickerOpen(true)}
           style={[inputBox, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
         >
-          <Text style={{ fontSize: 16, color: coords ? '#111' : GREEN, fontWeight: coords ? '400' : '600' }}>
+          <Text style={{ fontSize: 16, color: coords ? C.text : GREEN, fontWeight: coords ? '400' : '600' }}>
             {coords ? '✓ Lokacija izabrana' : '📍 Izaberi na mapi'}
           </Text>
           {coords && <Text style={{ color: GREEN }}>Promijeni</Text>}
@@ -205,13 +206,13 @@ export default function CreateGame() {
               minimumDate={new Date()}
               minuteInterval={5}
               locale="bs-BA"
-              themeVariant="light"
+              themeVariant="dark"
               onChange={(_, d) => d && setDate(d)}
             />
           </View>
         ) : (
           <Pressable onPress={openAndroidPicker} style={inputBox}>
-            <Text style={{ fontSize: 16, color: '#111' }}>{formatDateTime(date)}</Text>
+            <Text style={{ fontSize: 16, color: C.text }}>{formatDateTime(date)}</Text>
           </Pressable>
         )}
 
@@ -225,7 +226,7 @@ export default function CreateGame() {
         <Label text="Koliko igrača fali? *" />
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <StepButton label="−" onPress={() => setNeeded(Math.max(1, needed - 1))} />
-          <Text style={{ fontSize: 22, fontWeight: '700', width: 50, textAlign: 'center', color: '#111' }}>{needed}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '700', width: 50, textAlign: 'center', color: C.text }}>{needed}</Text>
           <StepButton label="+" onPress={() => setNeeded(Math.min(20, needed + 1))} />
         </View>
 
@@ -243,12 +244,12 @@ export default function CreateGame() {
         <Input value={note} onChange={setNote} placeholder="npr. treba golman, ponesite tamne majice" multiline />
 
         {isEdit && (
-          <Text style={{ color: '#888', marginTop: 16 }}>
+          <Text style={{ color: C.muted, marginTop: 16 }}>
             Svi prijavljeni igrači dobit će obavijest da je termin izmijenjen.
           </Text>
         )}
 
-        {!!error && <Text style={{ color: '#d00', marginTop: 16 }}>{error}</Text>}
+        {!!error && <Text style={{ color: C.danger, marginTop: 16 }}>{error}</Text>}
 
         <Pressable
           onPress={save}
@@ -256,18 +257,18 @@ export default function CreateGame() {
           style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: saving ? 0.6 : 1 }}
         >
           {saving
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>{isEdit ? 'Sačuvaj izmjene' : 'Objavi oglas'}</Text>}
+            ? <ActivityIndicator color={C.onAccent} />
+            : <Text style={{ color: C.onAccent, fontSize: 16, fontWeight: '700' }}>{isEdit ? 'Sačuvaj izmjene' : 'Objavi oglas'}</Text>}
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const inputBox = { borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14 };
+const inputBox = { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14 };
 
 function Label({ text }: { text: string }) {
-  return <Text style={{ fontWeight: '700', color: '#111', marginTop: 20, marginBottom: 8 }}>{text}</Text>;
+  return <Text style={{ fontWeight: '700', color: C.text, marginTop: 20, marginBottom: 8 }}>{text}</Text>;
 }
 
 function Input(props: {
@@ -275,22 +276,22 @@ function Input(props: {
   keyboard?: 'default' | 'decimal-pad'; multiline?: boolean;
 }) {
   return (
-    <TextInput
+    <TextInput keyboardAppearance="dark"
       value={props.value}
       onChangeText={props.onChange}
       placeholder={props.placeholder}
-      placeholderTextColor="#999"
+      placeholderTextColor={C.faint}
       keyboardType={props.keyboard ?? 'default'}
       multiline={props.multiline}
-      style={[inputBox, { fontSize: 16, color: '#111' }, props.multiline && { minHeight: 80, textAlignVertical: 'top' }]}
+      style={[inputBox, { fontSize: 16, color: C.text }, props.multiline && { minHeight: 80, textAlignVertical: 'top' }]}
     />
   );
 }
 
 function StepButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#f1f1f1', alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontSize: 22, fontWeight: '700', color: '#111' }}>{label}</Text>
+    <Pressable onPress={onPress} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: 22, fontWeight: '700', color: C.text }}>{label}</Text>
     </Pressable>
   );
 }

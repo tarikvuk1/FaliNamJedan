@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, SectionList, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { useSports } from '../../lib/sports';
-import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
-import { Chip, GREEN } from '../../lib/ui';
+import { dayLabel, Level, SPORT_EMOJI } from '../../lib/format';
+import { Chip } from '../../lib/ui';
+import { C, F } from '../../lib/theme';
+import { tap, success } from '../../lib/haptics';
 import { CityField } from '../../components/CityPicker';
+import { DayHeader, EmptyState, GameCard } from '../../components/Visuals';
 
 type Game = {
   id: string;
@@ -20,7 +25,10 @@ type Game = {
   price_per_person: number | null;
   level: Level;
   organizer_name: string;
+  distance_km: number | null;
 };
+
+const NEARBY_RADIUS_KM = 15;
 
 export default function Home() {
   const { session } = useAuth();
@@ -32,20 +40,32 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [following, setFollowing] = useState(false);
+  const [nearby, setNearby] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.rpc('search_games', {
-      p_sport_id: sportId,
-      p_city: city,
-    });
+    const { data, error } = await supabase.rpc('search_games', nearby
+      ? { p_sport_id: sportId, p_city: null, p_lat: nearby.lat, p_lng: nearby.lng, p_radius_km: NEARBY_RADIUS_KM }
+      : { p_sport_id: sportId, p_city: city });
     setLoading(false);
     if (error) return setError(error.message);
     setError('');
     setGames(data ?? []);
-  }, [sportId, city]);
+  }, [sportId, city, nearby]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Grupisanje po danima: Danas, Sutra, Subota 8.11. ...
+  const sections = useMemo(() => {
+    const map = new Map<string, Game[]>();
+    for (const g of games) {
+      const key = dayLabel(g.starts_at);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(g);
+    }
+    return [...map.entries()].map(([title, data]) => ({ title, data }));
+  }, [games]);
 
   // Da li korisnik već prati izabrani sport + grad
   useEffect(() => {
@@ -56,6 +76,7 @@ export default function Home() {
 
   async function toggleFollow() {
     if (!sportId || !city) return;
+    tap();
     if (following) {
       const { error } = await supabase.from('follows').delete().eq('user_id', uid).eq('sport_id', sportId).eq('city', city);
       if (error) return Alert.alert('Greška', error.message);
@@ -64,91 +85,140 @@ export default function Home() {
       const { error } = await supabase.from('follows').upsert({ user_id: uid, sport_id: sportId, city }, { ignoreDuplicates: true });
       if (error) return Alert.alert('Greška', error.message);
       setFollowing(true);
-      const s = sports.find((x) => x.id === sportId);
-      Alert.alert('🔔 Pratiš', `Javit ćemo ti kad se pojavi novi termin: ${s?.name ?? ''}, ${city}.`);
+      success();
+    }
+  }
+
+  async function toggleNearby() {
+    tap();
+    if (nearby) return setNearby(null);
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Lokacija nije dozvoljena', 'Za termine u blizini dozvoli lokaciju u podešavanjima telefona.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setNearby({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+    } catch {
+      Alert.alert('Greška', 'Nije moguće odrediti lokaciju.');
+    } finally {
+      setLocating(false);
     }
   }
 
   const sportById = (id: number) => sports.find((s) => s.id === id);
 
+  const header = (
+    <View>
+      {/* Filteri */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+        <View style={{ flex: 1, opacity: nearby ? 0.4 : 1 }} pointerEvents={nearby ? 'none' : 'auto'}>
+          <CityField value={city} onChange={setCity} allowAll />
+        </View>
+        <Pressable
+          onPress={toggleNearby}
+          disabled={locating}
+          style={{
+            marginLeft: 8, height: 50, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, justifyContent: 'center',
+            borderColor: nearby ? C.accent : C.border, backgroundColor: nearby ? C.accent : C.card,
+            flexDirection: 'row', alignItems: 'center',
+          }}
+        >
+          {locating ? <ActivityIndicator color={C.accent} /> : (
+            <>
+              <Ionicons name="navigate" size={16} color={nearby ? C.onAccent : C.text} style={{ marginRight: 6 }} />
+              <Text style={{ color: nearby ? C.onAccent : C.text, fontWeight: '700' }}>Blizu</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+      {nearby && <Text style={{ color: C.muted, marginTop: -4, marginBottom: 10 }}>Termini do {NEARBY_RADIUS_KM} km od tebe</Text>}
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
+        <Chip label="Svi sportovi" active={sportId === null} onPress={() => { tap(); setSportId(null); }} />
+        {sports.map((s) => (
+          <Chip key={s.id} label={`${SPORT_EMOJI[s.slug] ?? ''} ${s.name}`} active={sportId === s.id} onPress={() => { tap(); setSportId(s.id); }} />
+        ))}
+      </ScrollView>
+
+      {!nearby && sportId && city && (
+        <Pressable
+          onPress={toggleFollow}
+          style={{
+            flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 4,
+            paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999,
+            borderWidth: 1, borderColor: following ? C.accent : C.border, backgroundColor: following ? C.accentSoft : 'transparent',
+          }}
+        >
+          <Ionicons name={following ? 'notifications' : 'notifications-outline'} size={15} color={following ? C.accent : C.text2} style={{ marginRight: 6 }} />
+          <Text style={{ color: following ? C.accent : C.text2, fontWeight: '600' }}>
+            {following ? 'Pratiš ovaj sport u ovom gradu' : 'Javi mi za nove termine'}
+          </Text>
+        </Pressable>
+      )}
+
+      {!!error && <Text style={{ color: C.danger, marginTop: 8 }}>{error}</Text>}
+    </View>
+  );
+
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 }}>
-        <Text style={{ fontSize: 26, fontWeight: '800', color: '#111' }}>Fali nam jedan</Text>
-        <Pressable onPress={() => router.push('/create')} style={{ backgroundColor: GREEN, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>+ Objavi</Text>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* Zaglavlje */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 }}>
+        <Text style={{ fontSize: 24, fontFamily: F.bold, color: C.text }}>
+          Fali nam <Text style={{ color: C.accent }}>jedan</Text>
+        </Text>
+        <Pressable
+          onPress={() => { tap(); router.push('/create'); }}
+          style={({ pressed }) => ({
+            backgroundColor: C.accent, paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999,
+            flexDirection: 'row', alignItems: 'center', opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <Ionicons name="add" size={18} color={C.onAccent} />
+          <Text style={{ color: C.onAccent, fontFamily: F.bold, marginLeft: 2 }}>Objavi</Text>
         </Pressable>
       </View>
 
-      <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
-        <CityField value={city} onChange={setCity} allowAll style={{ marginBottom: 12 }} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Chip label="Svi sportovi" active={sportId === null} onPress={() => setSportId(null)} />
-          {sports.map((s) => (
-            <Chip key={s.id} label={`${SPORT_EMOJI[s.slug] ?? ''} ${s.name}`} active={sportId === s.id} onPress={() => setSportId(s.id)} />
-          ))}
-        </ScrollView>
-
-        {/* Praćenje: vidljivo kad su izabrani i sport i grad */}
-        {sportId && city && (
-          <Pressable
-            onPress={toggleFollow}
-            style={{
-              flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: 4,
-              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999,
-              borderWidth: 1, borderColor: following ? GREEN : '#ddd', backgroundColor: following ? '#ecfdf5' : '#fff',
-            }}
-          >
-            <Text style={{ color: following ? GREEN : '#444', fontWeight: '600' }}>
-              {following ? '🔔 Pratiš ovaj sport u ovom gradu' : '🔕 Javi mi za nove termine'}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-
-      {!!error && <Text style={{ color: '#d00', paddingHorizontal: 20 }}>{error}</Text>}
-
-      <FlatList
-        data={games}
+      <SectionList
+        sections={sections}
         keyExtractor={(g) => g.id}
-        refreshing={loading}
-        onRefresh={load}
-        contentContainerStyle={{ padding: 20, paddingTop: 8, flexGrow: 1 }}
+        ListHeaderComponent={header}
+        stickySectionHeadersEnabled={false}
+        refreshControl={<RefreshControl refreshing={loading && games.length > 0} onRefresh={load} tintColor={C.accent} />}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30, flexGrow: 1 }}
+        renderSectionHeader={({ section }) => <DayHeader>{section.title}</DayHeader>}
         ListEmptyComponent={
-          loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : (
-            <View style={{ alignItems: 'center', marginTop: 60 }}>
-              <Text style={{ fontSize: 40 }}>🏟️</Text>
-              <Text style={{ color: '#666', marginTop: 8 }}>Nema otvorenih termina.</Text>
-              <Text style={{ color: '#666' }}>Objavi prvi!</Text>
-            </View>
+          loading ? <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} /> : (
+            <EmptyState
+              icon="🏟️"
+              title={nearby ? 'Nema termina u blizini' : 'Nema otvorenih termina'}
+              text={nearby
+                ? 'U blizini se prikazuju samo termini s lokacijom na mapi.'
+                : 'Budi prvi: objavi termin i pronađi igrače koji vam fale.'}
+              action={{ label: '+ Objavi termin', onPress: () => router.push('/create') }}
+            />
           )
         }
         renderItem={({ item }) => {
           const sport = sportById(item.sport_id);
           return (
-            <Pressable
-              onPress={() => router.push(`/game/${item.id}`)}
-              style={({ pressed }) => ({
-                borderWidth: 1, borderColor: '#eee', borderRadius: 16, padding: 16, marginBottom: 12,
-                backgroundColor: pressed ? '#f0f0f0' : '#fafafa',
-              })}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: '#111' }}>
-                  {SPORT_EMOJI[sport?.slug ?? ''] ?? ''} {sport?.name}
-                </Text>
-                <Text style={{ color: GREEN, fontWeight: '700' }}>
-                  Fali {item.spots_left} {item.spots_left === 1 ? 'igrač' : 'igrača'}
-                </Text>
-              </View>
-              <Text style={{ color: '#333', marginTop: 6 }}>📍 {item.venue_name}, {item.city}</Text>
-              <Text style={{ color: '#333', marginTop: 2 }}>🕒 {formatDateTime(item.starts_at)}</Text>
-              <Text style={{ color: '#666', marginTop: 6 }}>
-                {LEVELS[item.level]}
-                {item.price_per_person != null ? ` · ${item.price_per_person} KM po osobi` : ''}
-                {` · ${item.organizer_name}`}
-              </Text>
-            </Pressable>
+            <GameCard
+              sportSlug={sport?.slug}
+              sportName={sport?.name}
+              venue={item.venue_name}
+              city={item.city}
+              startsAt={item.starts_at}
+              needed={item.players_needed}
+              left={item.spots_left}
+              price={item.price_per_person}
+              level={item.level}
+              organizer={item.organizer_name}
+              distanceKm={item.distance_km}
+              onPress={() => { tap(); router.push(`/game/${item.id}`); }}
+            />
           );
         }}
       />

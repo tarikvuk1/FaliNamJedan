@@ -6,6 +6,7 @@ import { useSports } from '../lib/sports';
 import { SPORT_EMOJI } from '../lib/format';
 import { Chip, GREEN } from '../lib/ui';
 import { CityField } from './CityPicker';
+import { C } from '../lib/theme';
 
 type Follow = { sport_id: number; city: string };
 
@@ -56,32 +57,32 @@ export function FollowsModal({ visible, onClose }: { visible: boolean; onClose: 
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView style={{ flex: 1, backgroundColor: '#fff' }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: '#111' }}>Praćenje</Text>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: C.text }}>Praćenje</Text>
           <Pressable onPress={onClose}>
             <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
           </Pressable>
         </View>
-        <Text style={{ color: '#666', marginTop: 6 }}>
+        <Text style={{ color: C.muted, marginTop: 6 }}>
           Dobit ćeš obavijest čim neko objavi novi termin za sport i grad koji pratiš.
         </Text>
 
         {/* Trenutna praćenja */}
-        <Text style={{ fontWeight: '700', color: '#111', marginTop: 24, marginBottom: 8 }}>Pratiš</Text>
+        <Text style={{ fontWeight: '700', color: C.text, marginTop: 24, marginBottom: 8 }}>Pratiš</Text>
         {loading ? <ActivityIndicator style={{ alignSelf: 'flex-start' }} /> : follows.length === 0 ? (
-          <Text style={{ color: '#999' }}>Još ništa ne pratiš.</Text>
+          <Text style={{ color: C.faint }}>Još ništa ne pratiš.</Text>
         ) : follows.map((f) => (
-          <View key={`${f.sport_id}-${f.city}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f1f1' }}>
-            <Text style={{ flex: 1, fontSize: 16, color: '#111' }}>{sportName(f.sport_id)} · {f.city}</Text>
+          <View key={`${f.sport_id}-${f.city}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.line }}>
+            <Text style={{ flex: 1, fontSize: 16, color: C.text }}>{sportName(f.sport_id)} · {f.city}</Text>
             <Pressable onPress={() => remove(f)} hitSlop={8}>
-              <Text style={{ color: '#d00', fontWeight: '600' }}>Ukloni</Text>
+              <Text style={{ color: C.danger, fontWeight: '600' }}>Ukloni</Text>
             </Pressable>
           </View>
         ))}
 
         {/* Dodaj novo */}
-        <Text style={{ fontWeight: '700', color: '#111', marginTop: 28, marginBottom: 8 }}>Dodaj praćenje</Text>
+        <Text style={{ fontWeight: '700', color: C.text, marginTop: 28, marginBottom: 8 }}>Dodaj praćenje</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
           {sports.map((s) => (
             <Chip key={s.id} label={`${SPORT_EMOJI[s.slug] ?? ''} ${s.name}`} active={sportId === s.id} onPress={() => setSportId(s.id)} />
@@ -95,7 +96,7 @@ export function FollowsModal({ visible, onClose }: { visible: boolean; onClose: 
           disabled={saving}
           style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, opacity: saving ? 0.6 : 1 }}
         >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>🔔 Prati</Text>}
+          {saving ? <ActivityIndicator color={C.onAccent} /> : <Text style={{ color: C.onAccent, fontSize: 16, fontWeight: '700' }}>🔔 Prati</Text>}
         </Pressable>
       </ScrollView>
     </Modal>

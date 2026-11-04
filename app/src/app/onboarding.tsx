@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, Text, TextInput, View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
+import { C, F } from '../lib/theme';
+import { Field, PrefixField, PrimaryButton, SectionTitle } from '../lib/ui';
+import { facebookError, instagramError, normalizeFacebook, normalizeInstagram } from '../lib/contacts';
+import { success } from '../lib/haptics';
+import { CityField } from '../components/CityPicker';
 
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth();
@@ -12,14 +14,14 @@ export default function Onboarding() {
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [city, setCity] = useState('Sarajevo');
+  const [city, setCity] = useState<string | null>('Sarajevo');
   const [phone, setPhone] = useState('');
   const [instagram, setInstagram] = useState('');
   const [facebook, setFacebook] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Ako ime već postoji (npr. iz Google prijave kasnije), popuni ga
+  // Ako ime već postoji (npr. iz Google ili Apple prijave), popuni ga
   useEffect(() => {
     supabase.from('profiles').select('first_name, last_name, city').eq('id', uid).single()
       .then(({ data }) => {
@@ -31,86 +33,84 @@ export default function Onboarding() {
 
   async function save() {
     const clean = (v: string) => v.trim() || null;
-    const ig = instagram.trim().replace(/^@/, '');
+    const ig = normalizeInstagram(instagram);
+    const fb = normalizeFacebook(facebook);
+    const contactError = instagramError(ig) || facebookError(fb);
 
     if (!firstName.trim() || !lastName.trim()) return setError('Unesi ime i prezime.');
-    if (!clean(phone) && !ig && !clean(facebook)) return setError('Unesi bar jedan kontakt.');
+    if (!clean(phone) && !ig && !fb) return setError('Unesi bar jedan kontakt.');
+    if (contactError) return setError(contactError);
 
     setSaving(true);
     setError('');
 
     const { error: e1 } = await supabase
       .from('profiles')
-      .update({ first_name: firstName.trim(), last_name: lastName.trim(), city: clean(city) })
+      .update({ first_name: firstName.trim(), last_name: lastName.trim(), city })
       .eq('id', uid);
 
     const { error: e2 } = await supabase
       .from('profile_contacts')
-      .upsert({ user_id: uid, phone: clean(phone), instagram: ig || null, facebook: clean(facebook) });
+      .upsert({ user_id: uid, phone: clean(phone), instagram: ig || null, facebook: fb || null });
 
     if (e1 || e2) {
       setSaving(false);
       return setError((e1 ?? e2)!.message);
     }
 
+    success();
     await refreshProfile(); // _layout prebacuje na početni ekran
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: '#fff' }}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 80 }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: 28, fontWeight: '800', color: '#111' }}>Tvoj profil</Text>
-        <Text style={{ color: '#666', marginTop: 8, marginBottom: 24 }}>
-          Kontakt vidi samo organizator termina kad te odobri, i obrnuto.
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: C.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 80, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <Text style={{ fontSize: 30, fontFamily: F.bold, color: C.text }}>
+          Još jedan <Text style={{ color: C.accent }}>korak</Text>
+        </Text>
+        <Text style={{ color: C.muted, marginTop: 8, marginBottom: 12, lineHeight: 22 }}>
+          Napravi profil da bi mogao objavljivati termine i prijavljivati se na njih.
         </Text>
 
-        <Field label="Ime *" value={firstName} onChange={setFirstName} />
-        <Field label="Prezime *" value={lastName} onChange={setLastName} />
-        <Field label="Grad" value={city} onChange={setCity} />
+        <SectionTitle style={{ marginTop: 16 }}>O tebi</SectionTitle>
+        <Field label="Ime *" value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
+        <Field label="Prezime *" value={lastName} onChangeText={setLastName} autoCapitalize="words" />
+        <Text style={{ color: C.muted, marginTop: 12, marginBottom: 6, fontWeight: '600' }}>Grad</Text>
+        <CityField value={city} onChange={setCity} />
 
-        <Text style={{ marginTop: 16, marginBottom: 4, fontWeight: '700', color: '#111' }}>
-          Kontakt *
-        </Text>
-        <Field label="Telefon" value={phone} onChange={setPhone} keyboard="phone-pad" placeholder="+387 6x xxx xxx" />
-        <Field label="Instagram" value={instagram} onChange={setInstagram} placeholder="@korisnicko_ime" />
-        <Field label="Facebook" value={facebook} onChange={setFacebook} placeholder="ime ili link profila" />
+        <SectionTitle style={{ marginTop: 28 }}>Kontakt (bar jedan) *</SectionTitle>
+        <View style={{ backgroundColor: C.accentSoft, borderRadius: 12, padding: 12 }}>
+          <Text style={{ color: C.text2, lineHeight: 20 }}>
+            🔒 Kontakt vidi samo organizator termina kad te odobri, i obrnuto. Niko drugi.
+          </Text>
+        </View>
+        <Field label="Telefon" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+387 6x xxx xxx" />
+        <PrefixField
+          label="Instagram"
+          prefix="@"
+          value={instagram}
+          onChangeText={(v) => setInstagram(normalizeInstagram(v))}
+          placeholder="korisnicko_ime"
+          error={instagramError(normalizeInstagram(instagram))}
+        />
+        <PrefixField
+          label="Facebook"
+          prefix="facebook.com/"
+          value={facebook}
+          onChangeText={setFacebook}
+          onEndEditing={() => setFacebook(normalizeFacebook(facebook))}
+          placeholder="ime.prezime"
+          error={facebook ? facebookError(normalizeFacebook(facebook)) : null}
+        />
 
-        {!!error && <Text style={{ color: '#d00', marginTop: 12 }}>{error}</Text>}
+        {!!error && <Text style={{ color: C.danger, marginTop: 12 }}>{error}</Text>}
 
-        <Pressable
-          onPress={save}
-          disabled={saving}
-          style={{ backgroundColor: '#16a34a', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: saving ? 0.6 : 1 }}
-        >
-          {saving
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Sačuvaj i nastavi</Text>}
-        </Pressable>
+        <PrimaryButton label="Sačuvaj i nastavi" onPress={save} loading={saving} style={{ marginTop: 24 }} />
 
         <Pressable onPress={() => supabase.auth.signOut()} style={{ marginTop: 16, alignItems: 'center' }}>
-          <Text style={{ color: '#888' }}>Odjavi se</Text>
+          <Text style={{ color: C.faint }}>Odjavi se</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function Field(props: {
-  label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; keyboard?: 'default' | 'phone-pad';
-}) {
-  return (
-    <View style={{ marginTop: 12 }}>
-      <Text style={{ color: '#444', marginBottom: 6 }}>{props.label}</Text>
-      <TextInput
-        value={props.value}
-        onChangeText={props.onChange}
-        placeholder={props.placeholder}
-        placeholderTextColor="#999"
-        keyboardType={props.keyboard ?? 'default'}
-        autoCapitalize={props.keyboard === 'phone-pad' ? 'none' : 'words'}
-        style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 16, color: '#111' }}
-      />
-    </View>
   );
 }

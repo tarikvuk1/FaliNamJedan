@@ -6,6 +6,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { Chip, GREEN } from '../lib/ui';
+import { C } from '../lib/theme';
 
 const REASONS: { key: string; label: string }[] = [
   { key: 'no_show', label: 'Nije došao' },
@@ -92,49 +93,49 @@ export function ReportModal({ target, gameId, onClose, onBlocked }: {
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: '#fff' }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: C.bg }}>
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: '#111' }}>Prijavi korisnika</Text>
+            <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: C.text }}>Prijavi korisnika</Text>
             <Pressable onPress={onClose}>
               <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
             </Pressable>
           </View>
-          <Text style={{ color: '#666', marginTop: 6 }}>{target.name}</Text>
+          <Text style={{ color: C.muted, marginTop: 6 }}>{target.name}</Text>
 
-          <Text style={{ fontWeight: '700', color: '#111', marginTop: 24, marginBottom: 8 }}>Razlog</Text>
+          <Text style={{ fontWeight: '700', color: C.text, marginTop: 24, marginBottom: 8 }}>Razlog</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {REASONS.map((r) => (
               <Chip key={r.key} label={r.label} active={reason === r.key} onPress={() => setReason(r.key)} />
             ))}
           </View>
 
-          <Text style={{ fontWeight: '700', color: '#111', marginTop: 16, marginBottom: 8 }}>Detalji (neobavezno)</Text>
-          <TextInput
+          <Text style={{ fontWeight: '700', color: C.text, marginTop: 16, marginBottom: 8 }}>Detalji (neobavezno)</Text>
+          <TextInput keyboardAppearance="dark"
             value={details}
             onChangeText={setDetails}
             placeholder="Šta se desilo?"
-            placeholderTextColor="#999"
+            placeholderTextColor={C.faint}
             multiline
             maxLength={500}
-            style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 16, color: '#111', minHeight: 100, textAlignVertical: 'top' }}
+            style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14, fontSize: 16, color: C.text, minHeight: 100, textAlignVertical: 'top' }}
           />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16 }}>
-            <Text style={{ flex: 1, color: '#111' }}>Blokiraj i ovog korisnika</Text>
+            <Text style={{ flex: 1, color: C.text }}>Blokiraj i ovog korisnika</Text>
             <Switch value={alsoBlock} onValueChange={setAlsoBlock} />
           </View>
 
           <Pressable
             onPress={sendReport}
             disabled={busy}
-            style={{ backgroundColor: '#d00', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: busy ? 0.6 : 1 }}
+            style={{ backgroundColor: C.danger, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: busy ? 0.6 : 1 }}
           >
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Pošalji prijavu</Text>}
+            {busy ? <ActivityIndicator color={C.onAccent} /> : <Text style={{ color: C.onAccent, fontSize: 16, fontWeight: '700' }}>Pošalji prijavu</Text>}
           </Pressable>
 
           <Pressable onPress={blockOnly} disabled={busy} style={{ alignItems: 'center', marginTop: 16, padding: 8 }}>
-            <Text style={{ color: '#666', textDecorationLine: 'underline' }}>Samo blokiraj, bez prijave</Text>
+            <Text style={{ color: C.muted, textDecorationLine: 'underline' }}>Samo blokiraj, bez prijave</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -170,9 +171,9 @@ export function BlockedUsersModal({ visible, onClose }: { visible: boolean; onCl
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#fff', padding: 20 }}>
+      <View style={{ flex: 1, backgroundColor: C.bg, padding: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: '#111' }}>Blokirani korisnici</Text>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: C.text }}>Blokirani korisnici</Text>
           <Pressable onPress={onClose}>
             <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
           </Pressable>
@@ -181,10 +182,10 @@ export function BlockedUsersModal({ visible, onClose }: { visible: boolean; onCl
           <FlatList
             data={items}
             keyExtractor={(i) => i.id}
-            ListEmptyComponent={<Text style={{ color: '#666', marginTop: 12 }}>Nisi blokirao nikoga.</Text>}
+            ListEmptyComponent={<Text style={{ color: C.muted, marginTop: 12 }}>Nisi blokirao nikoga.</Text>}
             renderItem={({ item }) => (
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f1f1' }}>
-                <Text style={{ flex: 1, fontSize: 16, color: '#111' }}>{item.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line }}>
+                <Text style={{ flex: 1, fontSize: 16, color: C.text }}>{item.name}</Text>
                 <Pressable onPress={() => unblock(item.id)}>
                   <Text style={{ color: GREEN, fontWeight: '700' }}>Odblokiraj</Text>
                 </Pressable>

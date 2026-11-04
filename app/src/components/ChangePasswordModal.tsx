@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { GREEN } from '../lib/ui';
 import { translate } from '../app/login';
+import { C } from '../lib/theme';
 
 export function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { session } = useAuth();
@@ -49,10 +50,10 @@ export function ChangePasswordModal({ visible, onClose }: { visible: boolean; on
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: '#fff' }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: C.bg }}>
         <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: '#111' }}>Promijeni lozinku</Text>
+            <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: C.text }}>Promijeni lozinku</Text>
             <Pressable onPress={onClose}>
               <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
             </Pressable>
@@ -62,7 +63,7 @@ export function ChangePasswordModal({ visible, onClose }: { visible: boolean; on
           <PasswordField label="Nova lozinka" value={next} onChange={setNext} type="newPassword" />
           <PasswordField label="Ponovi novu lozinku" value={repeat} onChange={setRepeat} type="newPassword" />
 
-          {!!error && <Text style={{ color: '#d00', marginTop: 12 }}>{error}</Text>}
+          {!!error && <Text style={{ color: C.danger, marginTop: 12 }}>{error}</Text>}
 
           <Pressable
             onPress={save}
@@ -70,8 +71,8 @@ export function ChangePasswordModal({ visible, onClose }: { visible: boolean; on
             style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 24, opacity: saving ? 0.6 : 1 }}
           >
             {saving
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Sačuvaj novu lozinku</Text>}
+              ? <ActivityIndicator color={C.onAccent} />
+              : <Text style={{ color: C.onAccent, fontSize: 16, fontWeight: '700' }}>Sačuvaj novu lozinku</Text>}
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -84,14 +85,14 @@ function PasswordField({ label, value, onChange, type }: {
 }) {
   return (
     <View style={{ marginTop: 12 }}>
-      <Text style={{ color: '#444', marginBottom: 6 }}>{label}</Text>
-      <TextInput
+      <Text style={{ color: C.text2, marginBottom: 6 }}>{label}</Text>
+      <TextInput keyboardAppearance="dark"
         value={value}
         onChangeText={onChange}
         secureTextEntry
         autoCapitalize="none"
         textContentType={type}
-        style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 16, color: '#111' }}
+        style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14, fontSize: 16, color: C.text }}
       />
     </View>
   );

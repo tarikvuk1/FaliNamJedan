@@ -1,11 +1,13 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, SectionList, Text, View } from 'react-native';
+import { ActivityIndicator, SectionList, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
-import { formatDateTime, SPORT_EMOJI } from '../../lib/format';
-import { GREEN } from '../../lib/ui';
+import { C } from '../../lib/theme';
+import { ScreenTitle } from '../../lib/ui';
+import { tap } from '../../lib/haptics';
+import { EmptyState, GameCard } from '../../components/Visuals';
 
 type GameRow = {
   id: string;
@@ -16,7 +18,13 @@ type GameRow = {
   sport: { name: string; slug: string } | null;
 };
 
-type Item = { game: GameRow; badge: string; badgeColor: string };
+type Item = { game: GameRow; badge: string; badgeColor: string; past?: boolean };
+
+const EMPTY: Record<string, string> = {
+  'Organizujem': 'Nemaš aktivnih oglasa.',
+  'Prijavljen sam': 'Nisi prijavljen ni na jedan termin.',
+  'Odigrani termini': 'Još nema odigranih termina.',
+};
 
 export default function MyGames() {
   const { session } = useAuth();
@@ -27,14 +35,18 @@ export default function MyGames() {
   const load = useCallback(async () => {
     setLoading(true);
     const now = new Date().toISOString();
+    const since = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(); // historija: zadnjih 60 dana
     const gameFields = 'id, venue_name, city, starts_at, status, sport:sports(name, slug)';
 
-    const [{ data: organizing }, { data: joined }] = await Promise.all([
+    const [{ data: organizing }, { data: joined }, { data: organizedPast }] = await Promise.all([
       supabase.from('games').select(gameFields)
         .eq('organizer_id', uid).in('status', ['open', 'full']).gte('starts_at', now)
         .order('starts_at'),
       supabase.from('join_requests').select(`status, game:games(${gameFields})`)
         .eq('player_id', uid).in('status', ['pending', 'approved']),
+      supabase.from('games').select(gameFields)
+        .eq('organizer_id', uid).neq('status', 'cancelled').lt('starts_at', now).gte('starts_at', since)
+        .order('starts_at', { ascending: false }).limit(20),
     ]);
 
     // Broj prijava na čekanju za moje oglase
@@ -51,67 +63,81 @@ export default function MyGames() {
       return {
         game: g,
         badge: n > 0 ? `${n} ${n === 1 ? 'nova prijava' : 'nove prijave'}` : g.status === 'full' ? 'Popunjeno' : 'Otvoreno',
-        badgeColor: n > 0 ? '#ea580c' : '#888',
+        badgeColor: n > 0 ? C.warn : C.muted,
       };
     });
 
-    const joinedItems: Item[] = (joined ?? [])
-      .filter((r: any) => r.game && r.game.starts_at >= now && r.game.status !== 'cancelled')
+    const joinedRows = (joined ?? []).filter((r: any) => r.game && r.game.status !== 'cancelled');
+
+    const joinedItems: Item[] = joinedRows
+      .filter((r: any) => r.game.starts_at >= now)
       .sort((a: any, b: any) => a.game.starts_at.localeCompare(b.game.starts_at))
       .map((r: any) => ({
         game: r.game,
-        badge: r.status === 'approved' ? '✅ Odobren' : '⏳ Na čekanju',
-        badgeColor: r.status === 'approved' ? GREEN : '#888',
+        badge: r.status === 'approved' ? 'Odobren' : 'Na čekanju',
+        badgeColor: r.status === 'approved' ? C.accent : C.muted,
       }));
+
+    // Historija: termini koje sam organizovao + oni na kojima sam bio odobren
+    const pastItems: Item[] = [
+      ...(organizedPast ?? []).map((g: any) => ({ game: g, badge: 'Organizator', badgeColor: C.muted, past: true })),
+      ...joinedRows
+        .filter((r: any) => r.status === 'approved' && r.game.starts_at < now && r.game.starts_at >= since)
+        .map((r: any) => ({ game: r.game, badge: 'Igrač', badgeColor: C.muted, past: true })),
+    ].sort((a, b) => b.game.starts_at.localeCompare(a.game.starts_at));
 
     setSections([
       { title: 'Organizujem', data: organizingItems },
       { title: 'Prijavljen sam', data: joinedItems },
+      { title: 'Odigrani termini', data: pastItems },
     ]);
     setLoading(false);
   }, [uid]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#fff' }}>
-      <Text style={{ fontSize: 26, fontWeight: '800', color: '#111', paddingHorizontal: 20, paddingTop: 8 }}>Moji termini</Text>
+  const nothing = !loading && sections.every((sec) => sec.data.length === 0);
 
-      {loading && !sections.length ? <ActivityIndicator style={{ marginTop: 40 }} /> : (
+  return (
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.bg }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 6 }}>
+        <ScreenTitle>Moji termini</ScreenTitle>
+      </View>
+
+      {loading && !sections.length ? <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} /> : nothing ? (
+        <EmptyState
+          icon="📅"
+          title="Još nemaš termina"
+          text="Objavi svoj termin ili se prijavi na neki s oglasne ploče."
+          action={{ label: 'Pogledaj oglase', onPress: () => router.navigate('/') }}
+        />
+      ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.game.id}
+          keyExtractor={(item) => `${item.past ? 'p' : 'a'}-${item.badge}-${item.game.id}`}
           refreshing={loading}
           onRefresh={load}
-          contentContainerStyle={{ padding: 20 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
-            <View style={{ marginTop: 12, marginBottom: 8 }}>
-              <Text style={{ color: '#888', fontWeight: '700', textTransform: 'uppercase', fontSize: 12 }}>{section.title}</Text>
+            <View style={{ marginTop: 14, marginBottom: 10 }}>
+              <Text style={{ color: C.muted, fontWeight: '700', textTransform: 'uppercase', fontSize: 12, letterSpacing: 0.6 }}>{section.title}</Text>
               {section.data.length === 0 && (
-                <Text style={{ color: '#aaa', marginTop: 8 }}>
-                  {section.title === 'Organizujem' ? 'Nemaš aktivnih oglasa.' : 'Nisi prijavljen ni na jedan termin.'}
-                </Text>
+                <Text style={{ color: C.faint, marginTop: 8 }}>{EMPTY[section.title]}</Text>
               )}
             </View>
           )}
           renderItem={({ item }) => (
-            <Pressable
-              onPress={() => router.push(`/game/${item.game.id}`)}
-              style={({ pressed }) => ({
-                borderWidth: 1, borderColor: '#eee', borderRadius: 16, padding: 16, marginBottom: 10,
-                backgroundColor: pressed ? '#f0f0f0' : '#fafafa',
-              })}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#111' }}>
-                  {SPORT_EMOJI[item.game.sport?.slug ?? ''] ?? ''} {item.game.sport?.name}
-                </Text>
-                <Text style={{ color: item.badgeColor, fontWeight: '700' }}>{item.badge}</Text>
-              </View>
-              <Text style={{ color: '#333', marginTop: 6 }}>📍 {item.game.venue_name}, {item.game.city}</Text>
-              <Text style={{ color: '#333', marginTop: 2 }}>🕒 {formatDateTime(item.game.starts_at)}</Text>
-            </Pressable>
+            <GameCard
+              sportSlug={item.game.sport?.slug}
+              sportName={item.game.sport?.name}
+              venue={item.game.venue_name}
+              city={item.game.city}
+              startsAt={item.game.starts_at}
+              badge={{ text: item.badge, color: item.badgeColor }}
+              dimmed={item.past}
+              onPress={() => { tap(); router.push(`/game/${item.game.id}`); }}
+            />
           )}
         />
       )}

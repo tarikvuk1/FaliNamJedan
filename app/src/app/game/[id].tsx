@@ -1,12 +1,17 @@
-import { useCallback, useState } from 'react';
+import { ReactNode, useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { formatDateTime, LEVELS, Level, SPORT_EMOJI } from '../../lib/format';
-import { GREEN } from '../../lib/ui';
+import { C, F, sportColor } from '../../lib/theme';
+import { OutlineButton, PrimaryButton, SectionTitle } from '../../lib/ui';
+import { success, tap, warning } from '../../lib/haptics';
+import { Avatar, PlayerSlots } from '../../components/Visuals';
+import { facebookLabel, facebookUrl, instagramUrl } from '../../lib/contacts';
 import { ReportModal, ReportTarget } from '../../components/ReportModal';
 
 type GameDetails = {
@@ -81,7 +86,6 @@ export default function GameScreen() {
     setMyRequest(req as MyRequest);
 
     if (gameData.organizer_id === uid) {
-      // ORGANIZATOR: prijave, kontakti odobrenih i dolasci
       const { data: reqs } = await supabase
         .from('join_requests')
         .select('id, status, message, player:profiles!join_requests_player_id_fkey(id, first_name, last_name, games_attended, games_no_show)')
@@ -109,7 +113,6 @@ export default function GameScreen() {
       (att ?? []).forEach((a: any) => { attMap[a.player_id] = a.showed_up; });
       setAttendance(attMap);
     } else if ((req as MyRequest)?.status === 'approved') {
-      // IGRAČ: kontakt organizatora vidi samo kad je odobren (to provjerava i baza)
       const { data: c } = await supabase
         .from('profile_contacts')
         .select('phone, instagram, facebook, other')
@@ -126,17 +129,17 @@ export default function GameScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Pomoćna funkcija: pozovi akciju u bazi, pokaži grešku ili osvježi ekran
-  async function run(fn: () => PromiseLike<{ error: { message: string } | null }>) {
+  async function run(fn: () => PromiseLike<{ error: { message: string } | null }>, onOk?: () => void) {
     setActing(true);
     const { error } = await fn();
     setActing(false);
-    if (error) return Alert.alert('Greška', error.message);
+    if (error) { warning(); return Alert.alert('Greška', error.message); }
+    onOk?.();
     load();
   }
 
   // ---------- Akcije igrača ----------
-  const join = () => run(() => supabase.rpc('request_to_join', { p_game_id: id }));
+  const join = () => run(() => supabase.rpc('request_to_join', { p_game_id: id }), success);
 
   function cancelMyRequest() {
     if (!myRequest) return;
@@ -157,7 +160,7 @@ export default function GameScreen() {
 
   // ---------- Akcije organizatora ----------
   const approve = (requestId: string) =>
-    run(() => supabase.rpc('respond_to_request', { p_request_id: requestId, p_approve: true }));
+    run(() => supabase.rpc('respond_to_request', { p_request_id: requestId, p_approve: true }), success);
 
   function reject(requestId: string, name: string) {
     Alert.alert('Odbij prijavu?', `${name} će dobiti obavijest da je prijava odbijena.`, [
@@ -194,8 +197,10 @@ export default function GameScreen() {
     ]);
   }
 
-  const markAttendance = (playerId: string, showedUp: boolean) =>
+  const markAttendance = (playerId: string, showedUp: boolean) => {
+    tap();
     run(() => supabase.rpc('mark_attendance', { p_game_id: id, p_player_id: playerId, p_showed_up: showedUp }));
+  };
 
   function openInMaps() {
     if (!game || extra?.lat == null || extra?.lng == null) return;
@@ -206,15 +211,16 @@ export default function GameScreen() {
     Linking.openURL(url);
   }
 
-  if (loading) return <ActivityIndicator style={{ flex: 1, backgroundColor: '#fff' }} />;
+  if (loading) return <View style={{ flex: 1, backgroundColor: C.bg, justifyContent: 'center' }}><ActivityIndicator color={C.accent} /></View>;
   if (error || !game) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
-        <Text style={{ color: '#666', textAlign: 'center' }}>{error || 'Termin nije pronađen.'}</Text>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg, padding: 24 }}>
+        <Text style={{ color: C.muted, textAlign: 'center' }}>{error || 'Termin nije pronađen.'}</Text>
       </View>
     );
   }
 
+  const color = sportColor(game.sport?.slug);
   const isOrganizer = game.organizer_id === uid;
   const hasStarted = new Date(game.starts_at) <= new Date();
   const isActive = (game.status === 'open' || game.status === 'full') && !hasStarted;
@@ -223,88 +229,102 @@ export default function GameScreen() {
   const pending = requests.filter((r) => r.status === 'pending');
   const approved = requests.filter((r) => r.status === 'approved');
 
+  const statusText = game.status === 'cancelled' ? 'Otkazano'
+    : game.status === 'finished' || hasStarted ? 'Završeno'
+    : spotsLeft <= 0 ? 'Popunjeno'
+    : `Fali ${spotsLeft} ${spotsLeft === 1 ? 'igrač' : 'igrača'}`;
+  const statusColor = game.status === 'cancelled' ? C.danger : spotsLeft > 0 && isActive ? color : C.muted;
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-        {/* Naslov */}
-        <Text style={{ fontSize: 28, fontWeight: '800', color: '#111' }}>
-          {SPORT_EMOJI[game.sport?.slug ?? ''] ?? ''} {game.sport?.name}
-        </Text>
-        <Text style={{ fontSize: 18, color: game.status === 'cancelled' ? '#d00' : GREEN, fontWeight: '700', marginTop: 6 }}>
-          {game.status === 'cancelled'
-            ? 'Otkazano'
-            : game.status === 'full' || spotsLeft <= 0
-              ? 'Popunjeno'
-              : `Fali ${spotsLeft} ${spotsLeft === 1 ? 'igrač' : 'igrača'}`}
-        </Text>
+        {/* ===== Zaglavlje termina ===== */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ backgroundColor: color + '22', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color, fontWeight: '700' }}>{SPORT_EMOJI[game.sport?.slug ?? ''] ?? ''} {game.sport?.name}</Text>
+          </View>
+          {game.level !== 'any' && (
+            <View style={{ backgroundColor: C.card2, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 }}>
+              <Text style={{ color: C.text2, fontWeight: '600' }}>{LEVELS[game.level]}</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={{ color: C.text, fontFamily: F.bold, fontSize: 26, marginTop: 12, lineHeight: 32 }}>{game.venue_name}</Text>
+        <Text style={{ color: C.muted, marginTop: 4 }}>{[game.address, game.city].filter(Boolean).join(', ')}</Text>
+
+        {/* Vrijeme i cijena */}
+        <View style={{ flexDirection: 'row', marginTop: 18 }}>
+          <InfoBox icon="time-outline" title={formatDateTime(game.starts_at)} sub={`${game.duration_minutes} min`} />
+          <InfoBox icon="cash-outline" title={game.price_per_person != null ? `${game.price_per_person} KM` : 'Bez cijene'} sub="po osobi" last />
+        </View>
+
+        {/* Slotovi */}
+        <View style={{ backgroundColor: C.card, borderRadius: 18, padding: 16, marginTop: 12, borderWidth: 1, borderColor: C.line }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={{ color: C.text, fontFamily: F.semi, fontSize: 15 }}>Igrači</Text>
+            <Text style={{ color: statusColor, fontFamily: F.bold }}>{statusText}</Text>
+          </View>
+          <PlayerSlots needed={game.players_needed} left={Math.max(0, spotsLeft)} size={30} color={color} max={10} />
+          <Text style={{ color: C.faint, marginTop: 10, fontSize: 13 }}>
+            Puni krug je igrač koji je odobren, a isprekidan mjesto koje još fali.
+          </Text>
+        </View>
 
         {/* ===== ORGANIZATOR: prijave ===== */}
         {isOrganizer && game.status !== 'cancelled' && (
           <>
             {!hasStarted && (
               <Section title={`Prijave na čekanju (${pending.length})`}>
-                {pending.length === 0 && <Text style={sub}>Još nema novih prijava.</Text>}
+                {pending.length === 0 && <Text style={{ color: C.faint }}>Još nema novih prijava.</Text>}
                 {pending.map((r) => (
-                  <Card key={r.id}>
-                    <Text style={value}>{fullName(r.player)}</Text>
-                    <Text style={sub}>{reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}</Text>
-                    {!!r.message && <Text style={{ color: '#333', marginTop: 6 }}>"{r.message}"</Text>}
-                    <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                      <Pressable
-                        onPress={() => approve(r.id)}
-                        disabled={acting || spotsLeft <= 0}
-                        style={{ flex: 1, backgroundColor: GREEN, borderRadius: 10, padding: 12, alignItems: 'center', marginRight: 8, opacity: acting || spotsLeft <= 0 ? 0.5 : 1 }}
-                      >
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>Odobri</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => reject(r.id, fullName(r.player))}
-                        disabled={acting}
-                        style={{ flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, alignItems: 'center' }}
-                      >
-                        <Text style={{ color: '#d00', fontWeight: '700' }}>Odbij</Text>
-                      </Pressable>
+                  <PersonCard key={r.id} name={fullName(r.player)} sub={reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}>
+                    {!!r.message && <Text style={{ color: C.text2, marginTop: 8 }}>"{r.message}"</Text>}
+                    <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
+                      <PrimaryButton label="Odobri" onPress={() => approve(r.id)} disabled={acting || spotsLeft <= 0} style={{ flex: 1, padding: 12 }} />
+                      <OutlineButton label="Odbij" color={C.danger} onPress={() => reject(r.id, fullName(r.player))} disabled={acting} style={{ flex: 1, padding: 12 }} />
                     </View>
                     <ReportLink onPress={() => r.player && setReportTarget({ id: r.player.id, name: fullName(r.player) })} />
-                  </Card>
+                  </PersonCard>
                 ))}
               </Section>
             )}
 
             <Section title={`Odobreni igrači (${approved.length}/${game.players_needed})`}>
-              {approved.length === 0 && <Text style={sub}>Još niko nije odobren.</Text>}
+              {approved.length === 0 && <Text style={{ color: C.faint }}>Još niko nije odobren.</Text>}
               {approved.map((r) => {
                 const pid = r.player?.id ?? '';
                 const marked = attendance[pid];
                 return (
-                  <Card key={r.id}>
-                    <Text style={value}>{fullName(r.player)}</Text>
-                    <Text style={sub}>{reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}</Text>
+                  <PersonCard key={r.id} name={fullName(r.player)} sub={reliability(r.player?.games_attended ?? 0, r.player?.games_no_show ?? 0)}>
                     {playerContacts[pid] && <ContactList c={playerContacts[pid]} />}
-
-                    {/* Nakon početka termina: evidencija dolaska */}
                     {hasStarted && (
-                      <View style={{ flexDirection: 'row', marginTop: 10 }}>
-                        <AttendanceButton label="✓ Došao" active={marked === true} color={GREEN} onPress={() => markAttendance(pid, true)} disabled={acting} />
-                        <AttendanceButton label="✕ Nije došao" active={marked === false} color="#d00" onPress={() => markAttendance(pid, false)} disabled={acting} />
+                      <View style={{ flexDirection: 'row', marginTop: 10, gap: 8 }}>
+                        <AttendanceButton label="✓ Došao" active={marked === true} color={C.accent} onPress={() => markAttendance(pid, true)} disabled={acting} />
+                        <AttendanceButton label="✕ Nije došao" active={marked === false} color={C.danger} onPress={() => markAttendance(pid, false)} disabled={acting} />
                       </View>
                     )}
                     <ReportLink onPress={() => r.player && setReportTarget({ id: r.player.id, name: fullName(r.player) })} />
-                  </Card>
+                  </PersonCard>
                 );
               })}
             </Section>
           </>
         )}
 
-        {/* Mjesto */}
-        <Section title="Mjesto">
-          <Text style={value}>{game.venue_name}</Text>
-          <Text style={sub}>{[game.address, game.city].filter(Boolean).join(', ')}</Text>
-          {hasMap && (
-            <>
+        {/* Napomena */}
+        {!!game.note && (
+          <Section title="Napomena">
+            <Text style={{ color: C.text2, lineHeight: 22 }}>{game.note}</Text>
+          </Section>
+        )}
+
+        {/* Mapa */}
+        {hasMap && (
+          <Section title="Lokacija">
+            <View style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.line }}>
               <MapView
-                style={{ height: 160, borderRadius: 12, marginTop: 12 }}
+                style={{ height: 170 }}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
@@ -313,70 +333,42 @@ export default function GameScreen() {
               >
                 <Marker coordinate={{ latitude: extra!.lat!, longitude: extra!.lng! }} />
               </MapView>
-              <Pressable onPress={openInMaps} style={{ marginTop: 10 }}>
-                <Text style={{ color: GREEN, fontWeight: '700' }}>Otvori u mapama →</Text>
-              </Pressable>
-            </>
-          )}
-        </Section>
-
-        {/* Vrijeme */}
-        <Section title="Vrijeme">
-          <Text style={value}>{formatDateTime(game.starts_at)}</Text>
-          <Text style={sub}>Trajanje: {game.duration_minutes} min</Text>
-        </Section>
-
-        {/* Detalji */}
-        <Section title="Detalji">
-          <Row label="Nivo" value={LEVELS[game.level]} />
-          <Row label="Cijena" value={game.price_per_person != null ? `${game.price_per_person} KM po osobi` : 'Nije navedena'} />
-          <Row label="Traži se igrača" value={String(game.players_needed)} />
-          {!!game.note && <Text style={{ color: '#333', marginTop: 10, lineHeight: 21 }}>{game.note}</Text>}
-        </Section>
+            </View>
+            <Pressable onPress={openInMaps} style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="navigate-outline" size={16} color={C.accent} style={{ marginRight: 6 }} />
+              <Text style={{ color: C.accent, fontWeight: '700' }}>Otvori u mapama</Text>
+            </Pressable>
+          </Section>
+        )}
 
         {/* Organizator (vide igrači) */}
         {!isOrganizer && (
           <Section title="Organizator">
-            <Text style={value}>{fullName(game.organizer)}</Text>
-            <Text style={sub}>{reliability(game.organizer?.games_attended ?? 0, game.organizer?.games_no_show ?? 0)}</Text>
-            <ReportLink
-              label="Prijavi ili blokiraj organizatora"
-              onPress={() => setReportTarget({ id: game.organizer_id, name: fullName(game.organizer) })}
-            />
-          </Section>
-        )}
-
-        {/* Kontakt organizatora (samo odobreni igrač) */}
-        {!isOrganizer && organizerContacts && (
-          <Section title="Kontakt organizatora">
-            <ContactList c={organizerContacts} />
+            <PersonCard name={fullName(game.organizer)} sub={reliability(game.organizer?.games_attended ?? 0, game.organizer?.games_no_show ?? 0)}>
+              {organizerContacts && <ContactList c={organizerContacts} />}
+              <ReportLink
+                label="Prijavi ili blokiraj organizatora"
+                onPress={() => setReportTarget({ id: game.organizer_id, name: fullName(game.organizer) })}
+              />
+            </PersonCard>
           </Section>
         )}
       </ScrollView>
 
       {/* Donja traka s akcijom */}
-      <View style={{ borderTopWidth: 1, borderTopColor: '#eee', padding: 16, paddingBottom: insets.bottom + 12, backgroundColor: '#fff' }}>
+      <View style={{ borderTopWidth: 1, borderTopColor: C.line, padding: 16, paddingBottom: insets.bottom + 12, backgroundColor: C.bg }}>
         {isOrganizer ? (
           isActive ? (
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <OutlineButton
-                  label="✏️ Uredi"
-                  color={GREEN}
-                  onPress={() => router.push({ pathname: '/create', params: { id } })}
-                  disabled={acting}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                {approved.length === 0
-                  ? <OutlineButton label="Obriši oglas" color="#d00" onPress={deleteGame} disabled={acting} />
-                  : <OutlineButton label="Otkaži termin" color="#d00" onPress={cancelGame} disabled={acting} />}
-              </View>
+              <OutlineButton label="✏️ Uredi" onPress={() => router.push({ pathname: '/create', params: { id } })} disabled={acting} style={{ flex: 1 }} />
+              {approved.length === 0
+                ? <OutlineButton label="Obriši oglas" color={C.danger} onPress={deleteGame} disabled={acting} style={{ flex: 1 }} />
+                : <OutlineButton label="Otkaži termin" color={C.danger} onPress={cancelGame} disabled={acting} style={{ flex: 1 }} />}
             </View>
           ) : (
             <>
               <Info text={game.status === 'cancelled' ? 'Otkazao si ovaj termin.' : 'Termin je počeo ili završio. Označi dolaske iznad.'} />
-              <OutlineButton label="Obriši oglas" color="#d00" onPress={deleteGame} disabled={acting} />
+              <OutlineButton label="Obriši oglas" color={C.danger} onPress={deleteGame} disabled={acting} />
             </>
           )
         ) : (
@@ -396,18 +388,9 @@ export default function GameScreen() {
         target={reportTarget}
         gameId={id}
         onClose={() => setReportTarget(null)}
-        // Organizator blokira igrača: osvježi listu. Igrač blokira organizatora: oglas mu više nije vidljiv.
         onBlocked={() => (isOrganizer ? load() : router.back())}
       />
     </View>
-  );
-}
-
-function ReportLink({ onPress, label = 'Prijavi / blokiraj' }: { onPress: () => void; label?: string }) {
-  return (
-    <Pressable onPress={onPress} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
-      <Text style={{ color: '#999', fontSize: 13, textDecorationLine: 'underline' }}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -428,54 +411,65 @@ function PlayerActions(p: {
       return (
         <>
           <Info text="⏳ Prijava poslana, čeka odobrenje organizatora." />
-          <OutlineButton label="Otkaži prijavu" color="#d00" onPress={p.onCancel} disabled={p.acting} />
+          <OutlineButton label="Otkaži prijavu" color={C.danger} onPress={p.onCancel} disabled={p.acting} />
         </>
       );
     case 'approved':
       return (
         <>
           <Info text="✅ Odobren si! Kontakt organizatora je iznad." />
-          <OutlineButton label="Ne mogu doći" color="#d00" onPress={p.onCancel} disabled={p.acting} />
+          <OutlineButton label="Ne mogu doći" color={C.danger} onPress={p.onCancel} disabled={p.acting} />
         </>
       );
     case 'rejected':
       return <Info text="Organizator je odbio prijavu za ovaj termin." />;
     default:
       if (p.gameStatus === 'full' || p.spotsLeft <= 0) return <Info text="Termin je popunjen." />;
-      return (
-        <Pressable
-          onPress={p.onJoin}
-          disabled={p.acting}
-          style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', opacity: p.acting ? 0.6 : 1 }}
-        >
-          {p.acting
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={{ color: '#fff', fontSize: 17, fontWeight: '800' }}>Pridruži se</Text>}
-        </Pressable>
-      );
+      return <PrimaryButton label="Uskoči u termin" onPress={() => { tap(); p.onJoin(); }} loading={p.acting} />;
   }
 }
 
-function ContactList({ c }: { c: Contacts }) {
+function InfoBox({ icon, title, sub, last }: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; sub: string; last?: boolean }) {
   return (
-    <View style={{ marginTop: 6 }}>
-      {!!c.phone && <ContactLink label={`📞 ${c.phone}`} url={`tel:${c.phone.replace(/\s/g, '')}`} />}
-      {!!c.instagram && <ContactLink label={`📷 @${c.instagram}`} url={`https://instagram.com/${c.instagram}`} />}
-      {!!c.facebook && (
-        <ContactLink
-          label={`👤 ${c.facebook}`}
-          url={c.facebook.startsWith('http') ? c.facebook : `https://www.facebook.com/search/top?q=${encodeURIComponent(c.facebook)}`}
-        />
-      )}
-      {!!c.other && <Text style={{ color: '#333', marginTop: 4 }}>{c.other}</Text>}
+    <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 16, padding: 14, marginRight: last ? 0 : 10, borderWidth: 1, borderColor: C.line }}>
+      <Ionicons name={icon} size={18} color={C.accent} />
+      <Text style={{ color: C.text, fontFamily: F.semi, fontSize: 15, marginTop: 6 }}>{title}</Text>
+      <Text style={{ color: C.muted, fontSize: 12, marginTop: 1 }}>{sub}</Text>
     </View>
   );
 }
 
-function ContactLink({ label, url }: { label: string; url: string }) {
+function PersonCard({ name, sub, children }: { name: string; sub: string; children?: ReactNode }) {
   return (
-    <Pressable onPress={() => Linking.openURL(url)} style={{ paddingVertical: 6 }}>
-      <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>{label}</Text>
+    <View style={{ backgroundColor: C.card, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: C.line }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Avatar name={name} size={42} />
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text style={{ color: C.text, fontSize: 16, fontWeight: '700' }}>{name}</Text>
+          <Text style={{ color: C.muted, marginTop: 1, fontSize: 13 }}>{sub}</Text>
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function ContactList({ c }: { c: Contacts }) {
+  return (
+    <View style={{ marginTop: 10, backgroundColor: C.card2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
+      {!!c.phone && <ContactLink icon="call-outline" label={c.phone} url={`tel:${c.phone.replace(/\s/g, '')}`} />}
+      {!!c.instagram && <ContactLink icon="logo-instagram" label={`@${c.instagram.replace(/^@/, '')}`} url={instagramUrl(c.instagram)} />}
+      {!!c.facebook && <ContactLink icon="logo-facebook" label={facebookLabel(c.facebook)} url={facebookUrl(c.facebook)} />}
+      {!!c.other && <Text style={{ color: C.text2, paddingVertical: 8 }}>{c.other}</Text>}
+    </View>
+  );
+}
+
+function ContactLink({ icon, label, url }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; url: string }) {
+  return (
+    <Pressable onPress={() => Linking.openURL(url)} style={{ paddingVertical: 8, flexDirection: 'row', alignItems: 'center' }}>
+      <Ionicons name={icon} size={18} color={C.accent} style={{ marginRight: 10 }} />
+      <Text style={{ color: C.accent, fontSize: 16, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }
@@ -488,56 +482,32 @@ function AttendanceButton({ label, active, color, onPress, disabled }: {
       onPress={onPress}
       disabled={disabled}
       style={{
-        flex: 1, borderRadius: 10, padding: 10, alignItems: 'center', marginRight: 8,
-        borderWidth: 1, borderColor: active ? color : '#ddd', backgroundColor: active ? color : '#fff',
+        flex: 1, borderRadius: 12, padding: 11, alignItems: 'center',
+        borderWidth: 1, borderColor: active ? color : C.border, backgroundColor: active ? color : 'transparent',
       }}
     >
-      <Text style={{ color: active ? '#fff' : '#333', fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: active ? C.onAccent : C.text2, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+function ReportLink({ onPress, label = 'Prijavi / blokiraj' }: { onPress: () => void; label?: string }) {
   return (
-    <View style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 14, padding: 14, marginBottom: 10, backgroundColor: '#fafafa' }}>
-      {children}
-    </View>
+    <Pressable onPress={onPress} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+      <Text style={{ color: C.faint, fontSize: 13, textDecorationLine: 'underline' }}>{label}</Text>
+    </Pressable>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <View style={{ marginTop: 24 }}>
-      <Text style={{ color: '#888', fontWeight: '700', textTransform: 'uppercase', fontSize: 12, marginBottom: 8 }}>{title}</Text>
+    <View style={{ marginTop: 26 }}>
+      <SectionTitle>{title}</SectionTitle>
       {children}
-    </View>
-  );
-}
-
-function Row({ label, value: v }: { label: string; value: string }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
-      <Text style={{ color: '#666' }}>{label}</Text>
-      <Text style={{ color: '#111', fontWeight: '600' }}>{v}</Text>
     </View>
   );
 }
 
 function Info({ text }: { text: string }) {
-  return <Text style={{ color: '#444', textAlign: 'center', marginBottom: 8, fontSize: 15 }}>{text}</Text>;
+  return <Text style={{ color: C.text2, textAlign: 'center', marginBottom: 10, fontSize: 15 }}>{text}</Text>;
 }
-
-function OutlineButton({ label, color, onPress, disabled }: { label: string; color: string; onPress: () => void; disabled?: boolean }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, alignItems: 'center', opacity: disabled ? 0.6 : 1 }}
-    >
-      <Text style={{ color, fontWeight: '700' }}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const value = { fontSize: 17, fontWeight: '700' as const, color: '#111' };
-const sub = { color: '#666', marginTop: 2 };

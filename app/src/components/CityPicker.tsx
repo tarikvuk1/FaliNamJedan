@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { CITIES, normalizeText } from '../lib/cities';
-import { GREEN } from '../lib/ui';
+import { C } from '../lib/theme';
 
 // Polje koje prikazuje izabrani grad i otvara listu
 export function CityField({ value, onChange, allowAll, style }: {
@@ -16,12 +17,16 @@ export function CityField({ value, onChange, allowAll, style }: {
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        style={[{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, flexDirection: 'row', justifyContent: 'space-between' }, style]}
+        style={[{
+          height: 50, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14,
+          paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center',
+        }, style]}
       >
-        <Text style={{ fontSize: 16, color: value ? '#111' : '#999' }}>
+        <Ionicons name="location-outline" size={18} color={C.muted} style={{ marginRight: 8 }} />
+        <Text style={{ flex: 1, fontSize: 16, color: value ? C.text : C.faint }}>
           {value ?? (allowAll ? 'Svi gradovi' : 'Izaberi grad')}
         </Text>
-        <Text style={{ color: '#999' }}>▾</Text>
+        <Ionicons name="chevron-down" size={18} color={C.muted} />
       </Pressable>
       <CityPicker
         visible={open}
@@ -51,11 +56,11 @@ function CityPicker({ visible, value, allowAll, onClose, onSelect }: {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#fff', paddingTop: 16 }}>
+      <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 }}>
-          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: '#111' }}>Izaberi grad</Text>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: C.text }}>Izaberi grad</Text>
           <Pressable onPress={onClose}>
-            <Text style={{ color: GREEN, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
+            <Text style={{ color: C.accent, fontSize: 16, fontWeight: '600' }}>Zatvori</Text>
           </Pressable>
         </View>
 
@@ -63,23 +68,24 @@ function CityPicker({ visible, value, allowAll, onClose, onSelect }: {
           value={query}
           onChangeText={setQuery}
           placeholder="Pretraži..."
-          placeholderTextColor="#999"
+          placeholderTextColor={C.faint}
           autoCorrect={false}
-          style={{ marginHorizontal: 20, borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 12, fontSize: 16, color: '#111' }}
+          keyboardAppearance="dark"
+          style={{ marginHorizontal: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 12, fontSize: 16, color: C.text }}
         />
 
         <FlatList
           data={results}
           keyExtractor={(c) => c}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 20, paddingTop: 8 }}
           ListHeaderComponent={allowAll && !query ? (
             <Row label="Svi gradovi" active={value === null} onPress={() => onSelect(null)} />
-          ) : undefined }
+          ) : undefined}
           renderItem={({ item }) => (
             <Row label={item} active={value === item} onPress={() => onSelect(item)} />
           )}
-          ListEmptyComponent={<Text style={{ color: '#666', padding: 20 }}>Nema rezultata.</Text>}
+          ListEmptyComponent={<Text style={{ color: C.muted, padding: 20 }}>Nema rezultata.</Text>}
         />
       </View>
     </Modal>
@@ -90,10 +96,13 @@ function Row({ label, active, onPress }: { label: string; active: boolean; onPre
   return (
     <Pressable
       onPress={onPress}
-      style={{ paddingVertical: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f1f1f1', flexDirection: 'row', justifyContent: 'space-between' }}
+      style={({ pressed }) => ({
+        paddingVertical: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: C.line,
+        flexDirection: 'row', justifyContent: 'space-between', backgroundColor: pressed ? C.card : 'transparent',
+      })}
     >
-      <Text style={{ fontSize: 16, color: '#111', fontWeight: active ? '700' : '400' }}>{label}</Text>
-      {active && <Text style={{ color: GREEN, fontWeight: '700' }}>✓</Text>}
+      <Text style={{ fontSize: 16, color: active ? C.accent : C.text, fontWeight: active ? '700' : '400' }}>{label}</Text>
+      {active && <Ionicons name="checkmark" size={20} color={C.accent} />}
     </Pressable>
   );
 }

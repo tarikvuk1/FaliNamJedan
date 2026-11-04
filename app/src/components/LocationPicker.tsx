@@ -3,7 +3,8 @@ import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, Text, TextIn
 import MapView from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GREEN } from '../lib/ui';
+import { Ionicons } from '@expo/vector-icons';
+import { C, F } from '../lib/theme';
 import { matchCity } from '../lib/cities';
 
 export type PickedLocation = {
@@ -20,8 +21,6 @@ type SearchResult = {
   details: string;
   latitude: number;
   longitude: number;
-  address: string | null;
-  city: string | null;
 };
 
 const SARAJEVO = { latitude: 43.8563, longitude: 18.4131 };
@@ -38,15 +37,12 @@ async function searchPlaces(query: string): Promise<SearchResult[]> {
   return data.map((r) => {
     const a = r.address ?? {};
     const street = [a.road, a.house_number].filter(Boolean).join(' ');
-    const name = r.name || street || r.display_name.split(',')[0];
     return {
       id: String(r.place_id),
-      name,
+      name: r.name || street || r.display_name.split(',')[0],
       details: r.display_name.split(',').slice(1, 4).join(',').trim(),
       latitude: Number(r.lat),
       longitude: Number(r.lon),
-      address: street || null,
-      city: matchCity(a.city, a.town, a.village, a.municipality, a.suburb, a.county),
     };
   });
 }
@@ -72,7 +68,6 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
 
-  // Pri otvaranju traži dozvolu za lokaciju (treba za "Moja lokacija" i adresu na Androidu)
   useEffect(() => {
     if (!visible) return;
     Location.requestForegroundPermissionsAsync();
@@ -112,9 +107,7 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
     setResults([]);
     setQuery(r.name);
     setPlaceName(r.name);
-    mapRef.current?.animateToRegion({
-      latitude: r.latitude, longitude: r.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005,
-    });
+    mapRef.current?.animateToRegion({ latitude: r.latitude, longitude: r.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 });
   }
 
   async function goToMyLocation() {
@@ -122,20 +115,19 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
     if (status !== 'granted') return;
     setPlaceName(null);
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    mapRef.current?.animateToRegion({
-      latitude: pos.coords.latitude, longitude: pos.coords.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01,
-    });
+    mapRef.current?.animateToRegion({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
   }
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: C.bg }}>
         <MapView
           ref={mapRef}
           style={{ flex: 1 }}
           showsUserLocation
+          userInterfaceStyle="dark"
           initialRegion={{ ...start, latitudeDelta: initial ? 0.01 : 0.05, longitudeDelta: initial ? 0.01 : 0.05 }}
-          onPanDrag={() => setPlaceName(null)} // ručno pomjeranje briše naziv iz pretrage
+          onPanDrag={() => setPlaceName(null)}
           onRegionChangeComplete={(r) => {
             setCenter({ latitude: r.latitude, longitude: r.longitude });
             lookup(r.latitude, r.longitude);
@@ -150,35 +142,37 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
         {/* Gornji dio: dugmad i pretraga */}
         <View style={{ position: 'absolute', top: insets.top + 10, left: 16, right: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Pressable onPress={onClose} style={floating}>
-              <Text style={{ fontWeight: '600', color: '#111' }}>✕ Odustani</Text>
+            <Pressable onPress={onClose} style={[floating, { flexDirection: 'row', alignItems: 'center' }]}>
+              <Ionicons name="close" size={18} color={C.text} style={{ marginRight: 4 }} />
+              <Text style={{ fontWeight: '600', color: C.text }}>Odustani</Text>
             </Pressable>
-            <Pressable onPress={goToMyLocation} style={floating}>
-              <Text style={{ fontWeight: '600', color: '#111' }}>◎ Moja lokacija</Text>
+            <Pressable onPress={goToMyLocation} style={[floating, { flexDirection: 'row', alignItems: 'center' }]}>
+              <Ionicons name="navigate" size={16} color={C.accent} style={{ marginRight: 6 }} />
+              <Text style={{ fontWeight: '600', color: C.text }}>Moja lokacija</Text>
             </Pressable>
           </View>
 
           <View style={[floating, { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 4, paddingLeft: 12 }]}>
+            <Ionicons name="search" size={18} color={C.muted} style={{ marginRight: 6 }} />
             <TextInput
               value={query}
               onChangeText={setQuery}
               onSubmitEditing={runSearch}
               placeholder="Traži teren, dvoranu, ulicu..."
-              placeholderTextColor="#999"
+              placeholderTextColor={C.faint}
               returnKeyType="search"
               autoCorrect={false}
-              style={{ flex: 1, fontSize: 16, color: '#111', paddingVertical: 8 }}
+              keyboardAppearance="dark"
+              style={{ flex: 1, fontSize: 16, color: C.text, paddingVertical: 8 }}
             />
-            <Pressable onPress={runSearch} style={{ backgroundColor: GREEN, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12 }}>
-              {searching
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={{ color: '#fff', fontWeight: '700' }}>Traži</Text>}
+            <Pressable onPress={runSearch} style={{ backgroundColor: C.accent, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12 }}>
+              {searching ? <ActivityIndicator color={C.onAccent} /> : <Text style={{ color: C.onAccent, fontWeight: '700' }}>Traži</Text>}
             </Pressable>
           </View>
 
           {!!searchError && (
             <View style={[floating, { marginTop: 8 }]}>
-              <Text style={{ color: '#666' }}>{searchError}</Text>
+              <Text style={{ color: C.muted }}>{searchError}</Text>
             </View>
           )}
 
@@ -186,9 +180,9 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
             <View style={[floating, { marginTop: 8, padding: 0, maxHeight: 300 }]}>
               <ScrollView keyboardShouldPersistTaps="handled">
                 {results.map((r) => (
-                  <Pressable key={r.id} onPress={() => selectResult(r)} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#f1f1f1' }}>
-                    <Text style={{ fontWeight: '700', color: '#111' }}>{r.name}</Text>
-                    <Text style={{ color: '#666', marginTop: 2 }} numberOfLines={1}>{r.details}</Text>
+                  <Pressable key={r.id} onPress={() => selectResult(r)} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: C.line }}>
+                    <Text style={{ fontWeight: '700', color: C.text }}>{r.name}</Text>
+                    <Text style={{ color: C.muted, marginTop: 2 }} numberOfLines={1}>{r.details}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -197,13 +191,13 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
         </View>
 
         {/* Donja kartica s adresom */}
-        <View style={{ backgroundColor: '#fff', padding: 20, paddingBottom: insets.bottom + 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, marginTop: -20 }}>
-          <Text style={{ color: '#666' }}>Pretraži ili pomjeri mapu da igla bude na terenu</Text>
-          <View style={{ minHeight: 48, justifyContent: 'center' }}>
-            {geocoding ? <ActivityIndicator style={{ alignSelf: 'flex-start' }} /> : (
+        <View style={{ backgroundColor: C.bg, padding: 20, paddingBottom: insets.bottom + 20, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -22 }}>
+          <Text style={{ color: C.muted }}>Pretraži ili pomjeri mapu da igla bude na terenu</Text>
+          <View style={{ minHeight: 52, justifyContent: 'center' }}>
+            {geocoding ? <ActivityIndicator color={C.accent} style={{ alignSelf: 'flex-start' }} /> : (
               <>
-                {!!placeName && <Text style={{ fontSize: 17, fontWeight: '800', color: '#111', marginTop: 6 }}>{placeName}</Text>}
-                <Text style={{ fontSize: placeName ? 15 : 17, fontWeight: placeName ? '400' : '700', color: placeName ? '#444' : '#111', marginTop: 4 }}>
+                {!!placeName && <Text style={{ fontSize: 18, fontFamily: F.bold, color: C.text, marginTop: 6 }}>{placeName}</Text>}
+                <Text style={{ fontSize: placeName ? 15 : 17, fontWeight: placeName ? '400' : '700', color: placeName ? C.text2 : C.text, marginTop: 4 }}>
                   {address ?? 'Nepoznata adresa'}{city ? `, ${city}` : ''}
                 </Text>
               </>
@@ -211,9 +205,9 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
           </View>
           <Pressable
             onPress={() => onPick({ ...center, address, city, name: placeName })}
-            style={{ backgroundColor: GREEN, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 12 }}
+            style={{ backgroundColor: C.accent, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 12 }}
           >
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Potvrdi lokaciju</Text>
+            <Text style={{ color: C.onAccent, fontSize: 16, fontFamily: F.bold }}>Potvrdi lokaciju</Text>
           </Pressable>
         </View>
       </View>
@@ -222,6 +216,7 @@ export function LocationPicker({ visible, initial, onClose, onPick }: {
 }
 
 const floating = {
-  backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12,
-  shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+  backgroundColor: C.card, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14,
+  borderWidth: 1, borderColor: C.border,
+  shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4,
 };
